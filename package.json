@@ -1,0 +1,25 @@
+{
+  "name": "define-art-contract",
+  "version": "1.0.0",
+  "description": "",
+  "main": "networks.js",
+  "scripts": {
+    "test": "mocha --exit --recursive test --timeout 5000"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/cli": "^2.8.2",
+    "@openzeppelin/contracts": "^3.4.1",
+    "@openzeppelin/contracts-ethereum-package": "^3.0.0",
+    "@openzeppelin/upgrades": "^2.8.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/test-environment": "^0.1.9",
+    "@openzeppelin/test-helpers": "^0.5.10",
+    "@truffle/hdwallet-provider": "^1.2.2",
+    "chai": "^4.3.3",
+    "mocha": "^8.3.1"
+  }
+}

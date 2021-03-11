@@ -1,0 +1,362 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.6.0;
+pragma experimental ABIEncoderV2;
+
+import "@openzeppelin/contracts-ethereum-package/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721Receiver.sol";
+import "./Governable.sol";
+import "./interfaces/IERC1155.sol";
+
+contract EnglishAuctionNFT is Configurable, IERC721Receiver {
+    using SafeMath for uint256;
+    using SafeERC20 for IERC20;
+
+    uint    internal constant TypeErc721                = 0;
+    uint    internal constant TypeErc1155               = 1;
+    address internal constant DeadAddress               = 0x000000000000000000000000000000000000dEaD;
+    address internal constant UniSwapContract           = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+
+    struct Pool {
+        // address of pool creator
+        address payable creator;
+        // pool name
+        string name;
+        // address of sell token
+        address token0;
+        // token id of token0
+        uint tokenId;
+        // amount of token id of token0
+        uint tokenAmount0;
+        // minimum amount of ETH that creator want to swap
+        uint amountMin1;
+        // minimum incremental amount of token1
+        uint amountMinIncr1;
+        // how many seconds the pool will be live since last bid
+        uint confirmTime;
+        // the timestamp in seconds the pool will be closed
+        uint closeAt;
+        // NFT token type
+        uint nftType;
+    }
+
+    Pool[] public pools;
+
+    // pool index => a flag that if creator is claimed the pool
+    mapping(uint => bool) public creatorClaimedP;
+    // pool index => the candidate of winner who bid the highest amount1 in current round
+    mapping(uint => address payable) public currentBidderP;
+    // pool index => the highest amount1 in current round
+    mapping(uint => uint) public currentBidderAmount1P;
+
+    // creator address => pool index + 1. if the result is 0, the account don't create any pool.
+    mapping(address => uint) public myCreatedP;
+    // name => pool index + 1
+    mapping(string => uint) public myNameP;
+
+    // account => array of pool index
+    mapping(address => uint[]) public myBidP;
+    // account => pool index => bid amount1
+    mapping(address => mapping(uint => uint)) public myBidderAmount1P;
+    // account => pool index => claim flag
+    mapping(address => mapping(uint => bool)) public myClaimedP;
+
+    // pool index => bid count; v1.15.0
+    mapping(uint => uint) public bidCountP;
+    // pool index => address of buy token; v1.16.0
+    mapping(uint => address) public token1P;
+
+    // check if token0 in whitelist
+    bool public checkToken0;
+    // token0 address => true or false
+    mapping(address => bool) public token0List;
+
+    event Created(Pool pool);
+    event Bid(address sender, uint index, uint amount1);
+    event Claimed(address sender, uint index);
+
+    function initialize(address _governor) public override initializer {
+        super.initialize(_governor);
+    }
+
+    function createErc721(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // minimum amount of token1
+        uint amountMin1,
+        // minimum incremental amount of token1
+        uint amountMinIncr1,
+        // confirmation time
+        uint confirmTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        uint tokenAmount0 = 1;
+        uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
+        _create(name, token0, tokenId, amounts, confirmTime, TypeErc721);
+        if (token1 != address(0)) {
+            token1P[pools.length-1] = token1;
+        }
+    }
+
+    function createErc1155(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // amount of token id of token0
+        uint tokenAmount0,
+        // minimum amount of token1
+        uint amountMin1,
+        // minimum incremental amount of token1
+        uint amountMinIncr1,
+        // confirmation time
+        uint confirmTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
+        _create(name, token0, tokenId, amounts, confirmTime, TypeErc1155);
+        if (token1 != address(0)) {
+            token1P[pools.length-1] = token1;
+        }
+    }
+
+    function _create(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // token id of token0
+        uint tokenId,
+        // 0: uint tokenAmount0, amount of token id of token0
+        // 1: uint amountMin1, minimum amount of token1
+        // 2: uint amountMinIncr1, minimum incremental amount of token1
+        uint[3] memory amounts,
+        // confirmation time
+        uint confirmTime,
+        // NFT token type
+        uint nftType
+    ) private
+        isPoolNotCreate(msg.sender)
+        nameNotBeenToken(name)
+    {
+        address payable creator = msg.sender;
+
+        require(amounts[0] != 0, "the value of tokenAmount0 is zero");
+        require(amounts[2] != 0, "the value of amountMinIncr1 is zero");
+        require(confirmTime >= 5 minutes, "the value of confirmTime less than 5 minutes");
+        require(confirmTime <= 1 days, "the value of confirmTime is exceeded 1 day");
+        require(bytes(name).length <= 15, "the length of name is too long");
+
+        // transfer tokenId of token0 to this contract
+        if (nftType == TypeErc721) {
+            IERC721(token0).safeTransferFrom(creator, address(this), tokenId);
+        } else {
+            IERC1155(token0).safeTransferFrom(creator, address(this), tokenId, amounts[0], "");
+        }
+
+        // creator pool
+        Pool memory pool;
+        pool.creator = creator;
+        pool.name = name;
+        pool.token0 = token0;
+        pool.tokenId = tokenId;
+        pool.tokenAmount0 = amounts[0];
+        pool.amountMin1 = amounts[1];
+        pool.amountMinIncr1 = amounts[2];
+        pool.confirmTime = confirmTime;
+        pool.closeAt = now.add(confirmTime);
+        pool.nftType = nftType;
+
+        pools.push(pool);
+        myCreatedP[creator] = pools.length;
+        myNameP[name] = pools.length;
+
+        emit Created(pool);
+    }
+
+    function bid(
+        // pool index
+        uint index,
+        // amount of token1
+        uint amount1
+    ) external payable
+        isPoolExist(index)
+        isPoolNotClosed(index)
+    {
+        address payable sender = msg.sender;
+
+        Pool storage pool = pools[index];
+        require(pool.creator != sender, "creator can't bid the pool created by self");
+        require(amount1 != 0, "the value of amount1 is zero");
+        require(amount1 >= pool.amountMin1, "the bid amount is lower than minimum bidder amount");
+
+        require(amount1 >= currentBidderAmount(index), "the bid amount is lower than the current bidder amount");
+
+        address token1 = token1P[index];
+        if (token1 == address(0)) {
+            require(amount1 == msg.value, "invalid ETH amount");
+        } else {
+            IERC20(token1).safeTransferFrom(sender, address(this), amount1);
+            IERC20(token1).safeApprove(address(this), 0);
+        }
+
+        // update closeAt
+        pool.closeAt = now.add(pool.confirmTime);
+
+        // return ETH to previous bidder
+        if (currentBidderP[index] != address(0) && currentBidderAmount1P[index] > 0) {
+            if (token1 == address(0)) {
+                currentBidderP[index].transfer(currentBidderAmount1P[index]);
+            } else {
+                IERC20(token1).safeTransfer(currentBidderP[index], currentBidderAmount1P[index]);
+            }
+        }
+
+        // record new winner
+        currentBidderP[index] = sender;
+        currentBidderAmount1P[index] = amount1;
+        bidCountP[index] = bidCountP[index] + 1;
+
+        myBidP[sender].push(index);
+        myBidderAmount1P[sender][index] = amount1;
+
+        emit Bid(sender, index, amount1);
+    }
+
+    function creatorClaim(uint index) external
+        isPoolExist(index)
+        isPoolClosed(index)
+    {
+        address payable sender = msg.sender;
+        require(isCreator(sender, index), "sender is not pool creator");
+        require(!creatorClaimedP[index], "creator has claimed this pool");
+        creatorClaimedP[index] = true;
+
+        // remove ownership of this pool from creator
+        delete myCreatedP[sender];
+
+        Pool memory pool = pools[index];
+        if (currentBidderP[index] != address(0)) {
+            uint amount1 = currentBidderAmount1P[index];
+            if (amount1 > 0) {
+                if (token1P[index] == address(0)) {
+                    // transfer ETH to creator
+                    pool.creator.transfer(amount1);
+                } else {
+                    IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
+                }
+            }
+        } else {
+            // transfer token0 back to creator
+            if (pool.nftType == TypeErc721) {
+                IERC721(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId);
+            } else {
+                IERC1155(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId, pool.tokenAmount0, "");
+            }
+        }
+
+        emit Claimed(sender, index);
+    }
+
+    function bidderClaim(uint index) external
+        isPoolExist(index)
+        isPoolClosed(index)
+    {
+        address payable sender = msg.sender;
+        require(currentBidderP[index] == sender, "sender is not the winner of this pool");
+        require(!myClaimedP[sender][index], "sender has claimed this pool");
+        myClaimedP[sender][index] = true;
+
+        // transfer token0 to bidder
+        Pool memory pool = pools[index];
+        if (pool.nftType == TypeErc721) {
+            IERC721(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId);
+        } else {
+            IERC1155(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId, pool.tokenAmount0, "");
+        }
+
+        emit Claimed(sender, index);
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external override returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external returns(bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    function getPoolCount() external view returns (uint) {
+        return pools.length;
+    }
+
+    function currentBidderAmount(uint index) public view returns (uint) {
+        Pool memory pool = pools[index];
+        uint amount = pool.amountMin1;
+
+        if (currentBidderP[index] != address(0)) {
+            amount = currentBidderAmount1P[index].add(pool.amountMinIncr1);
+        } else if (pool.amountMin1 == 0) {
+            amount = pool.amountMinIncr1;
+        }
+
+        return amount;
+    }
+
+    function isCreator(address target, uint index) private view returns (bool) {
+        if (pools[index].creator == target) {
+            return true;
+        }
+        return false;
+    }
+
+    modifier isPoolClosed(uint index) {
+        require(pools[index].closeAt <= now, "this pool is not closed");
+        _;
+    }
+
+    modifier isPoolNotClosed(uint index) {
+        require(pools[index].closeAt > now, "this pool is closed");
+        _;
+    }
+
+    modifier isPoolNotCreate(address creator) {
+        if (myCreatedP[creator] > 0) {
+            revert("a pool has created by this address");
+        }
+        _;
+    }
+
+    modifier isPoolExist(uint index) {
+        require(index < pools.length, "this pool does not exist");
+        _;
+    }
+
+    modifier nameNotBeenToken(string memory name) {
+        // check if someone has take this name
+        if (myNameP[name] > 0) {
+            uint index = myNameP[name] - 1;
+            if ((myCreatedP[pools[index].creator] > 0) && (pools[index].closeAt > now)) {
+                revert("a live pool has been created by this name");
+            }
+        }
+        _;
+    }
+}

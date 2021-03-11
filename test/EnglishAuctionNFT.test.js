@@ -1,0 +1,431 @@
+// Load dependencies
+const { accounts, contract, web3 } = require('@openzeppelin/test-environment');
+const { expect } = require('chai');
+const { BN, constants, ether, expectEvent, expectRevert, time } = require('@openzeppelin/test-helpers');
+const { ZERO_ADDRESS } = constants;
+
+// Load compiled artifacts
+const EnglishAuctionNFT = contract.fromArtifact('EnglishAuctionNFT');
+const USDT = contract.fromArtifact(require('path').resolve('test/TetherToken'));
+const ERC20 = contract.fromArtifact(require('path').resolve('test/ERC20'));
+const ERC721 = contract.fromArtifact(require('path').resolve('test/ERC721'));
+const ERC1155 = contract.fromArtifact(require('path').resolve('test/ERC1155'));
+
+function usd (n) {
+    return ether(n).div(new BN('10').pow(new BN('12')));
+}
+
+// Start test block
+describe('EnglishAuctionNFT', function () {
+    const [ owner, creator, governor, bidder1, bidder2, bidder3 ] = accounts;
+
+    beforeEach(async function () {
+        // Deploy English Auction NFT contract for each test
+        this.EANFT = await EnglishAuctionNFT.new({ from: owner });
+
+        const cap = ether('500000');
+        // Deploy a ERC20 contract for each test
+        this.erc20Token = await ERC20.new('ERC20 Token', 'E20', cap, { from: owner });
+        this.usdToken = await USDT.new(usd('500000'), 'USD Token', 'USDT', 6, { from: owner });
+
+        // Deploy a ERC721 contract for each test
+        this.erc721 = await ERC721.new( { from: owner });
+        this.erc721.initialize("NFT", "BNFT", { from: owner });
+
+        // Deploy a ERC1155 contract for each test
+        this.erc1155 = await ERC1155.new('http://example.com', { from: owner });
+
+        // initialize EnglishAuctionNFT contract
+        await this.EANFT.initialize(governor, { from: governor });
+
+        // mint ERC20 token
+        await this.erc20Token.mint(this.EANFT.address, ether('10000'), { from: owner });
+        await this.erc20Token.mint(creator, ether('10000'), { from: owner });
+        await this.erc20Token.mint(bidder1, ether('10000'), { from: owner });
+        await this.erc20Token.mint(bidder2, ether('10000'), { from: owner });
+        await this.erc20Token.mint(bidder3, ether('10000'), { from: owner });
+        // mint USD token
+        await this.usdToken.transfer(creator, usd('10000'), { from: owner });
+        await this.usdToken.transfer(bidder1, usd('10000'), { from: owner });
+        await this.usdToken.transfer(bidder2, usd('10000'), { from: owner });
+        await this.usdToken.transfer(bidder3, usd('10000'), { from: owner });
+        // mint ERC721 token
+        await this.erc721.mint(creator, 0, { from: owner });
+        await this.erc721.mint(creator, 1, { from: owner });
+        await this.erc721.mint(creator, 2, { from: owner });
+        expect(await this.erc721.ownerOf(0)).to.equal(creator);
+        expect(await this.erc721.ownerOf(1)).to.equal(creator);
+        expect(await this.erc721.ownerOf(2)).to.equal(creator);
+        expect(await this.erc721.balanceOf(creator)).to.be.bignumber.equal(new BN('3'));
+        // mint ERC1155 token
+        await this.erc1155.mint(creator, 0, 10, [], { from: owner });
+        await this.erc1155.mint(creator, 1, 20, [], { from: owner });
+        await this.erc1155.mint(creator, 2, 30, [], { from: owner });
+        expect(await this.erc1155.balanceOf(creator, 0)).to.be.bignumber.equal(new BN('10'));
+        expect(await this.erc1155.balanceOf(creator, 1)).to.bignumber.equal(new BN('20'));
+        expect(await this.erc1155.balanceOf(creator, 2)).to.bignumber.equal(new BN('30'));
+    });
+
+    describe('create english auction pool ERC721/ETH', function () {
+        beforeEach(async function () {
+            const name = "ERC721/ETH";
+            const token0 = this.erc721.address;
+            const token1 = ZERO_ADDRESS;
+            const tokenId = 0;
+            const amountMin1 = ether('10');
+            const amountMinIncr1 = ether('5');
+            const confirmTime = 5 * 60;
+            const index = 0;
+            await this.erc721.approve(this.EANFT.address, tokenId, { from: creator });
+            await this.EANFT.createErc721(
+                name, token0, token1, tokenId, amountMin1, amountMinIncr1, confirmTime, {
+                from: creator,
+            });
+            const pool = await this.EANFT.pools(index);
+            expect(pool.name).to.equal(name);
+            expect(pool.creator).to.equal(creator);
+            expect(pool.token0).to.equal(token0);
+            expect(pool.tokenId).to.be.bignumber.equal(new BN('0'));
+            expect(pool.tokenAmount0).to.be.bignumber.equal(new BN('1'));
+            expect(pool.amountMin1).to.be.bignumber.equal(amountMin1);
+            expect(pool.amountMinIncr1).to.be.bignumber.equal(amountMinIncr1);
+            expect(pool.closeAt).to.be.bignumber.gt(new BN(confirmTime));
+            expect(pool.nftType).to.be.bignumber.equal(new BN('0'));
+            expect(await this.EANFT.myCreatedP(creator)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.creatorClaimedP(index)).to.equal(false);
+            expect(await this.erc721.ownerOf(0)).to.equal(this.EANFT.address);
+        });
+
+        it('when bid ERC721/ETH 1', async function () {
+            const index = 0;
+            expect(await this.EANFT.currentBidderP(index)).to.equal(ZERO_ADDRESS);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('0'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('0'));
+            let amount1 = ether('9.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder1, value: amount1 }), "the bid amount is lower than minimum bidder amount");
+            amount1 = ether('10');
+            await this.EANFT.bid(index, amount1, { from: bidder1, value: amount1 });
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder1);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('10'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            amount1 = ether('25');
+            await this.EANFT.bid(index, amount1, { from: bidder2, value: amount1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('25'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('2'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            amount1 = ether('25');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3, value: amount1 }), "the bid amount is lower than the current bidder amount");
+            amount1 = ether('29.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3, value: amount1 }), "the bid amount is lower than the current bidder amount");
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            amount1 = ether('30');
+            await this.EANFT.bid(index, amount1, { from: bidder2, value: amount1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('30'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('3'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            await time.increase(time.duration.minutes(1));
+            await this.EANFT.creatorClaim(index, { from: creator });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
+            await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
+            expect(await this.erc721.ownerOf(0)).to.equal(bidder2);
+        });
+
+        it('when no bid ERC721/ETH', async function () {
+            const index = 0;
+            await time.increase(time.duration.days(1));
+            expect(await this.erc721.ownerOf(0)).to.equal(this.EANFT.address);
+            this.EANFT.creatorClaim(index, { from: creator });
+            expect(await this.erc721.ownerOf(0)).to.equal(creator);
+            expect(await this.erc721.ownerOf(1)).to.equal(creator);
+            expect(await this.erc721.ownerOf(2)).to.equal(creator);
+            expect(await this.erc721.balanceOf(creator)).to.be.bignumber.equal(new BN('3'));
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+        });
+    });
+
+    describe('create english auction pool ERC1155/ETH', function () {
+        beforeEach(async function () {
+            const name = "ERC1155/ETH";
+            const token0 = this.erc1155.address;
+            const token1 = ZERO_ADDRESS;
+            const tokenId = 0;
+            const amountToken0 = 10;
+            const amountMin1 = ether('10');
+            const amountMinIncr1 = ether('5');
+            const confirmTime = 5 * 60;
+            const index = 0;
+
+            await this.erc1155.setApprovalForAll(this.EANFT.address, true, { from: creator });
+            await this.EANFT.createErc1155(
+                name, token0, token1, tokenId, amountToken0, amountMin1, amountMinIncr1, confirmTime, {
+                    from: creator,
+                });
+            const pool = await this.EANFT.pools(index);
+            expect(pool.name).to.equal(name);
+            expect(pool.creator).to.equal(creator);
+            expect(pool.token0).to.equal(token0);
+            expect(pool.tokenId).to.be.bignumber.equal(new BN('0'));
+            expect(pool.tokenAmount0).to.be.bignumber.equal(new BN('10'));
+            expect(pool.amountMin1).to.be.bignumber.equal(amountMin1);
+            expect(pool.amountMinIncr1).to.be.bignumber.equal(amountMinIncr1);
+            expect(pool.closeAt).to.be.bignumber.gt(new BN(confirmTime));
+            expect(pool.nftType).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.myCreatedP(creator)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.creatorClaimedP(index)).to.equal(false);
+            expect(await this.erc1155.balanceOf(this.EANFT.address, 0)).to.be.bignumber.equal(new BN('10'));
+        });
+
+        it('when bid ERC1155/ETH 1', async function () {
+            const index = 0;
+            expect(await this.EANFT.currentBidderP(index)).to.equal(ZERO_ADDRESS);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('0'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('0'));
+            let amount1 = ether('9.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder1, value: amount1 }), "the bid amount is lower than minimum bidder amount");
+            amount1 = ether('10');
+            await this.EANFT.bid(index, amount1, { from: bidder1, value: amount1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder1);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('10'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('1'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            amount1 = ether('25');
+            await this.EANFT.bid(index, amount1, { from: bidder2, value: amount1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('25'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('2'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            amount1 = ether('25');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3, value: amount1 }), "the bid amount is lower than the current bidder amount");
+            amount1 = ether('29.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3, value: amount1 }), "the bid amount is lower than the current bidder amount");
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            amount1 = ether('30');
+            await this.EANFT.bid(index, amount1, { from: bidder2, value: amount1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('30'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('3'));
+            expect(await web3.eth.getBalance(this.EANFT.address)).to.be.bignumber.equal(amount1);
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            await time.increase(time.duration.minutes(1));
+            await this.EANFT.creatorClaim(index, { from: creator });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
+            await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
+            expect(await this.erc1155.balanceOf(bidder2, 0)).to.be.bignumber.equal(new BN('10'));
+        });
+
+        it('when no bid ERC1155/ETH', async function () {
+            const index = 0;
+            await time.increase(time.duration.days(1));
+            expect(await this.erc1155.balanceOf(this.EANFT.address, 0)).to.be.bignumber.equal(new BN('10'));
+            this.EANFT.creatorClaim(index, { from: creator });
+            expect(await this.erc1155.balanceOf(creator, 0)).to.bignumber.equal(new BN('10'));
+            expect(await this.erc1155.balanceOf(creator, 1)).to.bignumber.equal(new BN('20'));
+            expect(await this.erc1155.balanceOf(creator, 2)).to.bignumber.equal(new BN('30'));
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+        });
+    });
+
+    describe('create english auction pool ERC721/USDT', function () {
+        beforeEach(async function () {
+            const name = "ERC721/USDT";
+            const token0 = this.erc721.address;
+            const token1 = this.usdToken.address;
+            const tokenId = 0;
+            const amountMin1 = usd('10');
+            const amountMinIncr1 = usd('5');
+            const confirmTime = 5 * 60;
+            const index = 0;
+            await this.erc721.approve(this.EANFT.address, tokenId, { from: creator });
+            await this.EANFT.createErc721(
+                name, token0, token1, tokenId, amountMin1, amountMinIncr1, confirmTime, {
+                    from: creator,
+                });
+            const pool = await this.EANFT.pools(index);
+            expect(pool.name).to.equal(name);
+            expect(pool.creator).to.equal(creator);
+            expect(pool.token0).to.equal(token0);
+            expect(pool.tokenId).to.be.bignumber.equal(new BN('0'));
+            expect(pool.tokenAmount0).to.be.bignumber.equal(new BN('1'));
+            expect(pool.amountMin1).to.be.bignumber.equal(amountMin1);
+            expect(pool.amountMinIncr1).to.be.bignumber.equal(amountMinIncr1);
+            expect(pool.closeAt).to.be.bignumber.gt(new BN(confirmTime));
+            expect(pool.nftType).to.be.bignumber.equal(new BN('0'));
+            expect(await this.EANFT.myCreatedP(creator)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.creatorClaimedP(index)).to.equal(false);
+            expect(await this.erc721.ownerOf(0)).to.equal(this.EANFT.address);
+        });
+
+        it('when bid ERC721/USDT 1', async function () {
+            const index = 0;
+            expect(await this.EANFT.currentBidderP(index)).to.equal(ZERO_ADDRESS);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(ether('0'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('0'));
+            let amount1 = usd('9.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder1 }), "the bid amount is lower than minimum bidder amount");
+            amount1 = usd('10');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder1 });
+            await this.EANFT.bid(index, amount1, { from: bidder1 });
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder1);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('10'));
+            amount1 = usd('25');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder2 });
+            await this.EANFT.bid(index, amount1, { from: bidder2 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('25'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('2'));
+            amount1 = usd('25');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder3 });
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3 }), "the bid amount is lower than the current bidder amount");
+            amount1 = usd('29.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3 }), "the bid amount is lower than the current bidder amount");
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            amount1 = usd('30');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder2 });
+            await this.EANFT.bid(index, amount1, { from: bidder2 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('30'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('3'));
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            await time.increase(time.duration.minutes(1));
+            await this.EANFT.creatorClaim(index, { from: creator });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
+            await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
+            expect(await this.erc721.ownerOf(0)).to.equal(bidder2);
+            expect(await this.usdToken.balanceOf(creator)).to.be.bignumber.equal(usd('10030'));
+            expect(await this.usdToken.balanceOf(bidder1)).to.be.bignumber.equal(usd('10000'));
+            expect(await this.usdToken.balanceOf(bidder2)).to.be.bignumber.equal(usd('9970'));
+            expect(await this.usdToken.balanceOf(bidder3)).to.be.bignumber.equal(usd('10000'));
+        });
+
+        it('when no bid ERC721/USDT', async function () {
+            const index = 0;
+            await time.increase(time.duration.days(1));
+            expect(await this.erc721.ownerOf(0)).to.equal(this.EANFT.address);
+            this.EANFT.creatorClaim(index, { from: creator });
+            expect(await this.erc721.ownerOf(0)).to.equal(creator);
+            expect(await this.erc721.ownerOf(1)).to.equal(creator);
+            expect(await this.erc721.ownerOf(2)).to.equal(creator);
+            expect(await this.erc721.balanceOf(creator)).to.be.bignumber.equal(new BN('3'));
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+        });
+    });
+
+    describe('create english auction pool ERC1155/USDT', function () {
+        beforeEach(async function () {
+            const name = "ERC1155/ETH";
+            const token0 = this.erc1155.address;
+            const token1 = this.usdToken.address;
+            const tokenId = 0;
+            const amountToken0 = 10;
+            const amountMin1 = usd('10');
+            const amountMinIncr1 = usd('5');
+            const confirmTime = 5 * 60;
+            const index = 0;
+
+            await this.erc1155.setApprovalForAll(this.EANFT.address, true, { from: creator });
+            await this.EANFT.createErc1155(
+                name, token0, token1, tokenId, amountToken0, amountMin1, amountMinIncr1, confirmTime, {
+                    from: creator,
+                });
+            const pool = await this.EANFT.pools(index);
+            expect(pool.name).to.equal(name);
+            expect(pool.creator).to.equal(creator);
+            expect(pool.token0).to.equal(token0);
+            expect(pool.tokenId).to.be.bignumber.equal(new BN('0'));
+            expect(pool.tokenAmount0).to.be.bignumber.equal(new BN('10'));
+            expect(pool.amountMin1).to.be.bignumber.equal(amountMin1);
+            expect(pool.amountMinIncr1).to.be.bignumber.equal(amountMinIncr1);
+            expect(pool.closeAt).to.be.bignumber.gt(new BN(confirmTime));
+            expect(pool.nftType).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.myCreatedP(creator)).to.be.bignumber.equal(new BN('1'));
+            expect(await this.EANFT.creatorClaimedP(index)).to.equal(false);
+            expect(await this.erc1155.balanceOf(this.EANFT.address, 0)).to.be.bignumber.equal(new BN('10'));
+        });
+
+        it('when bid ERC1155/USDT 1', async function () {
+            const index = 0;
+            expect(await this.EANFT.currentBidderP(index)).to.equal(ZERO_ADDRESS);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('0'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('0'));
+            let amount1 = usd('9.9999');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder1 });
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder1 }), "the bid amount is lower than minimum bidder amount");
+            await this.usdToken.approve(this.EANFT.address, 0, { from: bidder1 });
+            amount1 = usd('10');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder1 });
+            await this.EANFT.bid(index, amount1, { from: bidder1 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder1);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('10'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('1'));
+            amount1 = usd('25');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder2 });
+            await this.EANFT.bid(index, amount1, { from: bidder2 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('25'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('2'));
+            amount1 = usd('25');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder3 });
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3 }), "the bid amount is lower than the current bidder amount");
+            amount1 = usd('29.9999');
+            await expectRevert(this.EANFT.bid(index, amount1, { from: bidder3 }), "the bid amount is lower than the current bidder amount");
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            amount1 = usd('30');
+            await this.usdToken.approve(this.EANFT.address, amount1, { from: bidder2 });
+            await this.EANFT.bid(index, amount1, { from: bidder2 });
+            expect(await this.EANFT.currentBidderP(index)).to.equal(bidder2);
+            expect(await this.EANFT.currentBidderAmount1P(index)).to.be.bignumber.equal(usd('30'));
+            expect(await this.EANFT.bidCountP(index)).to.be.bignumber.equal(new BN('3'));
+            await time.increase(time.duration.minutes(4));
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
+            await time.increase(time.duration.minutes(1));
+            await this.EANFT.creatorClaim(index, { from: creator });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
+            await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
+            expect(await this.erc1155.balanceOf(bidder2, 0)).to.be.bignumber.equal(new BN('10'));
+            expect(await this.usdToken.balanceOf(creator)).to.be.bignumber.equal(usd('10030'));
+            expect(await this.usdToken.balanceOf(bidder1)).to.be.bignumber.equal(usd('10000'));
+            expect(await this.usdToken.balanceOf(bidder2)).to.be.bignumber.equal(usd('9970'));
+            expect(await this.usdToken.balanceOf(bidder3)).to.be.bignumber.equal(usd('10000'));
+        });
+
+        it('when no bid ERC1155/USDT', async function () {
+            const index = 0;
+            await time.increase(time.duration.days(1));
+            expect(await this.erc1155.balanceOf(this.EANFT.address, 0)).to.be.bignumber.equal(new BN('10'));
+            this.EANFT.creatorClaim(index, { from: creator });
+            expect(await this.erc1155.balanceOf(creator, 0)).to.bignumber.equal(new BN('10'));
+            expect(await this.erc1155.balanceOf(creator, 1)).to.bignumber.equal(new BN('20'));
+            expect(await this.erc1155.balanceOf(creator, 2)).to.bignumber.equal(new BN('30'));
+            await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
+        });
+    });
+
+});
