@@ -71,8 +71,18 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     // check if token0 in whitelist
     bool public checkToken0;
+
     // token0 address => true or false
     mapping(address => bool) public token0List;
+
+    uint256 fee;
+
+    uint256 feeMax;
+
+    address payable feeTo;
+
+    // pool add time after bid
+    mapping(uint => bool) public poolTime;
 
     event Created(Pool pool);
     event Bid(address sender, uint index, uint amount1);
@@ -96,14 +106,16 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         // minimum incremental amount of token1
         uint amountMinIncr1,
         // confirmation time
-        uint confirmTime
+        uint confirmTime,
+        // add close time after bid
+        bool addTime
     ) external payable {
         if (checkToken0) {
             require(token0List[token0], "invalid token0");
         }
         uint tokenAmount0 = 1;
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, tokenId, amounts, confirmTime, TypeErc721);
+        _create(name, token0, tokenId, amounts, confirmTime, TypeErc721, addTime);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -125,13 +137,15 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         // minimum incremental amount of token1
         uint amountMinIncr1,
         // confirmation time
-        uint confirmTime
+        uint confirmTime,
+        // add close time after bid
+        bool addTime
     ) external payable {
         if (checkToken0) {
             require(token0List[token0], "invalid token0");
         }
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, tokenId, amounts, confirmTime, TypeErc1155);
+        _create(name, token0, tokenId, amounts, confirmTime, TypeErc1155, addTime);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -151,10 +165,10 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         // confirmation time
         uint confirmTime,
         // NFT token type
-        uint nftType
+        uint nftType,
+
+        bool addTime
     ) private
-        isPoolNotCreate(msg.sender)
-        nameNotBeenToken(name)
     {
         address payable creator = msg.sender;
 
@@ -185,8 +199,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         pool.nftType = nftType;
 
         pools.push(pool);
-        myCreatedP[creator] = pools.length;
-        myNameP[name] = pools.length;
+        poolTime[pools.length - 1] = addTime;
 
         emit Created(pool);
     }
@@ -217,9 +230,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             IERC20(token1).safeApprove(address(this), 0);
         }
 
-        // update closeAt
-        pool.closeAt = now.add(pool.confirmTime);
-
         // return ETH to previous bidder
         if (currentBidderP[index] != address(0) && currentBidderAmount1P[index] > 0) {
             if (token1 == address(0)) {
@@ -227,6 +237,11 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             } else {
                 IERC20(token1).safeTransfer(currentBidderP[index], currentBidderAmount1P[index]);
             }
+        }
+
+        // update closeAt
+        if (poolTime[index] == true) {
+            pool.closeAt = now.add(pool.confirmTime);
         }
 
         // record new winner
@@ -249,19 +264,26 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         require(!creatorClaimedP[index], "creator has claimed this pool");
         creatorClaimedP[index] = true;
 
-        // remove ownership of this pool from creator
-        delete myCreatedP[sender];
 
         Pool memory pool = pools[index];
         if (currentBidderP[index] != address(0)) {
+            address payable winner = currentBidderP[index];
             uint amount1 = currentBidderAmount1P[index];
             if (amount1 > 0) {
+                myClaimedP[sender][index] = true;
                 if (token1P[index] == address(0)) {
                     // transfer ETH to creator
-                    pool.creator.transfer(amount1);
+                    uint256 auctionFee = 0;
+                    if (feeTo != address(0) && fee > 0) {
+                        auctionFee = amount1.mul(fee).div(feeMax);
+                        feeTo.transfer(auctionFee);
+                    }
+                    pool.creator.transfer(amount1.sub(auctionFee));
                 } else {
                     IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
                 }
+                IERC721(pool.token0).safeTransferFrom(address(this), winner, pool.tokenId);
+                myClaimedP[winner][index] = true;
             }
         } else {
             // transfer token0 back to creator
@@ -284,8 +306,24 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         require(!myClaimedP[sender][index], "sender has claimed this pool");
         myClaimedP[sender][index] = true;
 
-        // transfer token0 to bidder
         Pool memory pool = pools[index];
+        uint amount1 = currentBidderAmount1P[index];
+
+        if (amount1 > 0) {
+            if (token1P[index] == address(0)) {
+                // transfer ETH to creator
+                uint256 auctionFee = 0;
+                if (feeTo != address(0) && fee > 0) {
+                    auctionFee = amount1.mul(fee).div(feeMax);
+                    feeTo.transfer(auctionFee);
+                }
+                pool.creator.transfer(amount1.sub(auctionFee));
+            } else {
+                IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
+            }
+            creatorClaimedP[index] = true;
+        }
+        // transfer token0 to bidder
         if (pool.nftType == TypeErc721) {
             IERC721(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId);
         } else {
@@ -305,6 +343,36 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     function getPoolCount() external view returns (uint) {
         return pools.length;
+    }
+
+    function setFee(uint256 _fee) external governance returns (bool) {
+        fee = _fee;
+        return  true;
+    }
+
+    function setFeeMax(uint256 _feeMax) external governance returns (bool) {
+        feeMax = _feeMax;
+        return  true;
+    }
+
+    function setFeeTo(address payable _feeTo) external governance returns (bool) {
+        feeTo = _feeTo;
+        return  true;
+    }
+
+    function setCheckToken0(bool _checkToken0) external governance returns (bool) {
+        checkToken0 = _checkToken0;
+        return  true;
+    }
+
+    function setToken0List(address _token0, bool enable) external governance returns (bool) {
+        token0List[_token0] = enable;
+        return  true;
+    }
+
+    function setPoolTime(uint index, bool add) external governance returns (bool) {
+        poolTime[index] = add;
+        return  true;
     }
 
     function currentBidderAmount(uint index) public view returns (uint) {
@@ -337,26 +405,9 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         _;
     }
 
-    modifier isPoolNotCreate(address creator) {
-        if (myCreatedP[creator] > 0) {
-            revert("a pool has created by this address");
-        }
-        _;
-    }
-
     modifier isPoolExist(uint index) {
         require(index < pools.length, "this pool does not exist");
         _;
     }
 
-    modifier nameNotBeenToken(string memory name) {
-        // check if someone has take this name
-        if (myNameP[name] > 0) {
-            uint index = myNameP[name] - 1;
-            if ((myCreatedP[pools[index].creator] > 0) && (pools[index].closeAt > now)) {
-                revert("a live pool has been created by this name");
-            }
-        }
-        _;
-    }
 }
