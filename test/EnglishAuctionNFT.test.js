@@ -134,7 +134,6 @@ describe('EnglishAuctionNFT', function () {
             await time.increase(time.duration.minutes(1));
             await this.EANFT.creatorClaim(index, { from: creator });
             await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
-            await this.EANFT.bidderClaim(index, { from: bidder2 });
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
             expect(await this.erc721.ownerOf(0)).to.equal(bidder2);
@@ -221,9 +220,8 @@ describe('EnglishAuctionNFT', function () {
             await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
             await time.increase(time.duration.minutes(1));
-            await this.EANFT.creatorClaim(index, { from: creator });
-            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
             await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
             expect(await this.erc1155.balanceOf(bidder2, 0)).to.be.bignumber.equal(new BN('10'));
@@ -310,7 +308,6 @@ describe('EnglishAuctionNFT', function () {
             await time.increase(time.duration.minutes(1));
             await this.EANFT.creatorClaim(index, { from: creator });
             await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
-            await this.EANFT.bidderClaim(index, { from: bidder2 });
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
             expect(await this.erc721.ownerOf(0)).to.equal(bidder2);
@@ -404,9 +401,8 @@ describe('EnglishAuctionNFT', function () {
             await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "this pool is not closed");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "this pool is not closed");
             await time.increase(time.duration.minutes(1));
-            await this.EANFT.creatorClaim(index, { from: creator });
-            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
             await this.EANFT.bidderClaim(index, { from: bidder2 });
+            await expectRevert(this.EANFT.creatorClaim(index, { from: creator }), "creator has claimed this pool");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder1 }), "sender is not the winner of this pool.");
             await expectRevert(this.EANFT.bidderClaim(index, { from: bidder2 }), "sender has claimed this pool");
             expect(await this.erc1155.balanceOf(bidder2, 0)).to.be.bignumber.equal(new BN('10'));
