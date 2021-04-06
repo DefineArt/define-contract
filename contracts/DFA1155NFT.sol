@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Governable.sol";
 
 contract DFA1155NFT is Governable, ERC1155 {
- using Strings for uint256;
+  using Strings for uint256;
 
   event Mint(address indexed owner, uint256 indexed tokenId, uint256 amount);
 
