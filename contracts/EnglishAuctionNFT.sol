@@ -52,8 +52,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     // pool index => the highest amount1 in current round
     mapping(uint => uint) public currentBidderAmount1P;
 
-    // creator address => pool index + 1. if the result is 0, the account don't create any pool.
-    mapping(address => uint) public myCreatedP;
     // name => pool index + 1
     mapping(string => uint) public myNameP;
 
@@ -291,12 +289,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     function _creatorClaim(uint index) internal {
         creatorClaimedP[index] = true;
         Pool memory pool = pools[index];
-
-<<<<<<< HEAD
-=======
-        // remove ownership of this pool from creator
-        delete myCreatedP[pool.creator];
->>>>>>> 081762fd0de6c775599b290a8dd33c642f945bbf
 
         if (currentBidderP[index] != address(0)) {
             address payable winner = currentBidderP[index];
