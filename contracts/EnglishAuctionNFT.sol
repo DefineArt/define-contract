@@ -262,10 +262,42 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         address payable sender = msg.sender;
         require(isCreator(sender, index), "sender is not pool creator");
         require(!creatorClaimedP[index], "creator has claimed this pool");
+
+        _creatorClaim(index);
+
+        if (currentBidderP[index] != address(0)) {
+            address bidder = currentBidderP[index];
+            if (!myClaimedP[bidder][index]) {
+                _bidderClaim(bidder, index);
+            }
+        }
+    }
+
+    function bidderClaim(uint index) external
+        isPoolExist(index)
+        isPoolClosed(index)
+    {
+        address payable sender = msg.sender;
+        require(currentBidderP[index] == sender, "sender is not the winner of this pool");
+        require(!myClaimedP[sender][index], "sender has claimed this pool");
+
+        _bidderClaim(sender, index);
+
+        if (!creatorClaimedP[index]) {
+            _creatorClaim(index);
+        }
+    }
+
+    function _creatorClaim(uint index) internal {
         creatorClaimedP[index] = true;
-
-
         Pool memory pool = pools[index];
+
+<<<<<<< HEAD
+=======
+        // remove ownership of this pool from creator
+        delete myCreatedP[pool.creator];
+>>>>>>> 081762fd0de6c775599b290a8dd33c642f945bbf
+
         if (currentBidderP[index] != address(0)) {
             address payable winner = currentBidderP[index];
             uint amount1 = currentBidderAmount1P[index];
@@ -294,16 +326,10 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             }
         }
 
-        emit Claimed(sender, index);
+        emit Claimed(pool.creator, index);
     }
 
-    function bidderClaim(uint index) external
-        isPoolExist(index)
-        isPoolClosed(index)
-    {
-        address payable sender = msg.sender;
-        require(currentBidderP[index] == sender, "sender is not the winner of this pool");
-        require(!myClaimedP[sender][index], "sender has claimed this pool");
+    function _bidderClaim(address sender, uint index) internal {
         myClaimedP[sender][index] = true;
 
         Pool memory pool = pools[index];

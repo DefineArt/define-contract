@@ -96,11 +96,12 @@ describe('FixedSwapNFT', function () {
 
         it('when swap should be ok', async function () {
             const index = 0;
+            const amount0 = new BN('1');
             const amount1 = ether('10');
-            await this.FPNFT.swap(index, { from: buyer, value: amount1 });
+            await this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 });
             expect(await this.FPNFT.swappedP(index)).to.equal(true);
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer, value: amount1 }),
+                this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 }),
                 "this pool is swapped"
             );
             expect(await this.erc721.ownerOf(0)).to.equal(buyer);
@@ -108,9 +109,10 @@ describe('FixedSwapNFT', function () {
 
         it('when swap with invalid amount should throw exception', async function () {
             const index = 0;
+            const amount0 = new BN('1');
             const amount1 = ether('9');
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer, value: amount1 }),
+                this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 }),
                 "invalid ETH amount"
             );
         });
@@ -193,11 +195,12 @@ describe('FixedSwapNFT', function () {
 
         it('when swap should be ok', async function () {
             const index = 0;
+            const amount0 = new BN('10');
             const amount1 = ether('10');
-            await this.FPNFT.swap(index, { from: buyer, value: amount1 });
+            await this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 });
             expect(await this.FPNFT.swappedP(index)).to.equal(true);
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer, value: amount1 }),
+                this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 }),
                 "this pool is swapped"
             );
             expect(await this.erc1155.balanceOf(buyer, 0)).to.bignumber.equal(new BN('10'));
@@ -207,9 +210,10 @@ describe('FixedSwapNFT', function () {
 
         it('when swap with invalid amount should throw exception', async function () {
             const index = 0;
+            const amount0 = new BN('10');
             const amount1 = ether('9');
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer, value: amount1 }),
+                this.FPNFT.swap(index, amount0, { from: buyer, value: amount1 }),
                 "invalid ETH amount"
             );
         });
@@ -261,15 +265,16 @@ describe('FixedSwapNFT', function () {
 
         it('when swap should be ok', async function () {
             const index = 0;
+            const amount0 = new BN('1');
             const amount1 = usd('10');
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
-            await this.FPNFT.swap(index, { from: buyer });
+            await this.FPNFT.swap(index, amount0, { from: buyer });
             expect(await this.FPNFT.swappedP(index)).to.equal(true);
             expect(await this.usdToken.balanceOf(creator)).to.be.bignumber.equal(usd('10010'));
             expect(await this.usdToken.balanceOf(buyer)).to.be.bignumber.equal(usd('9990'));
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer }),
+                this.FPNFT.swap(index, amount0, { from: buyer }),
                 "this pool is swapped"
             );
             expect(await this.erc721.ownerOf(0)).to.equal(buyer);
@@ -277,10 +282,11 @@ describe('FixedSwapNFT', function () {
 
         it('when swap with invalid amount should throw exception', async function () {
             const index = 0;
+            const amount0 = new BN('1');
             const amount1 = usd('9');
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer }),
+                this.FPNFT.swap(index, amount0, { from: buyer }),
                 "SafeERC20: low-level call failed"
             );
         });
@@ -336,15 +342,16 @@ describe('FixedSwapNFT', function () {
 
         it('when swap should be ok', async function () {
             const index = 0;
+            const amount0 = new BN('10');
             const amount1 = usd('10');
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
-            await this.FPNFT.swap(index, { from: buyer });
+            await this.FPNFT.swap(index, amount0, { from: buyer });
             expect(await this.FPNFT.swappedP(index)).to.equal(true);
             expect(await this.usdToken.balanceOf(creator)).to.be.bignumber.equal(usd('10010'));
             expect(await this.usdToken.balanceOf(buyer)).to.be.bignumber.equal(usd('9990'));
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer }),
+                this.FPNFT.swap(index, amount0, { from: buyer }),
                 "this pool is swapped"
             );
             expect(await this.erc1155.balanceOf(buyer, 0)).to.bignumber.equal(new BN('10'));
@@ -354,10 +361,11 @@ describe('FixedSwapNFT', function () {
 
         it('when swap with invalid amount should throw exception', async function () {
             const index = 0;
+            const amount0 = new BN('10');
             const amount1 = usd('9');
             await this.usdToken.approve(this.FPNFT.address, amount1, { from: buyer });
             await expectRevert(
-                this.FPNFT.swap(index, { from: buyer }),
+                this.FPNFT.swap(index, amount0, { from: buyer }),
                 "SafeERC20: low-level call failed"
             );
         });
