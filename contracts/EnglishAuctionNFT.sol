@@ -3,13 +3,14 @@
 pragma solidity ^0.6.0;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts-ethereum-package/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./Governable.sol";
 import "./interfaces/IERC1155.sol";
+import "./NFTIndexer.sol";
 
 contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     using SafeMath for uint256;
@@ -81,6 +82,8 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     // pool add time after bid
     mapping(uint => bool) public poolTime;
+
+    address indexer; 
 
     event Created(Pool pool);
     event Bid(address sender, uint index, uint amount1);
@@ -176,12 +179,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         require(confirmTime <= 1 days, "the value of confirmTime is exceeded 1 day");
         require(bytes(name).length <= 15, "the length of name is too long");
 
-        // transfer tokenId of token0 to this contract
-        if (nftType == TypeErc721) {
-            IERC721(token0).safeTransferFrom(creator, address(this), tokenId);
-        } else {
-            IERC1155(token0).safeTransferFrom(creator, address(this), tokenId, amounts[0], "");
-        }
 
         // creator pool
         Pool memory pool;
@@ -198,6 +195,15 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
         pools.push(pool);
         poolTime[pools.length - 1] = addTime;
+
+        // transfer tokenId of token0 to this contract
+        if (nftType == TypeErc721) {
+            IERC721(token0).safeTransferFrom(creator, address(this), tokenId);
+            NFTIndexer(indexer).new721Auction(token0, tokenId, pools.length - 1);
+        } else {
+            IERC1155(token0).safeTransferFrom(creator, address(this), tokenId, amounts[0], "");
+            NFTIndexer(indexer).new1155Auction(token0, creator, tokenId, pools.length - 1);
+        }
 
         emit Created(pool);
     }
@@ -294,7 +300,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             address payable winner = currentBidderP[index];
             uint amount1 = currentBidderAmount1P[index];
             if (amount1 > 0) {
-                myClaimedP[sender][index] = true;
                 if (token1P[index] == address(0)) {
                     // transfer ETH to creator
                     uint256 auctionFee = 0;
@@ -380,6 +385,11 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     function setCheckToken0(bool _checkToken0) external governance returns (bool) {
         checkToken0 = _checkToken0;
+        return  true;
+    }
+
+    function setIndexer(address _indexer) external governance returns (bool) {
+        indexer = _indexer;
         return  true;
     }
 
