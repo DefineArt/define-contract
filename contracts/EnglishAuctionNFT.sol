@@ -349,8 +349,10 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         // transfer token0 to bidder
         if (pool.nftType == TypeErc721) {
             IERC721(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId);
+            NFTIndexer(indexer).del721Auction(pool.token0, pool.tokenId);
         } else {
             IERC1155(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId, pool.tokenAmount0, "");
+            NFTIndexer(indexer).del1155Auction(pool.token0, pool.creator, pool.tokenId);
         }
 
         emit Claimed(sender, index);
