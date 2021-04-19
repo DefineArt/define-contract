@@ -7,7 +7,16 @@ require('@openzeppelin/hardhat-upgrades');
 const { projectId, mnemonic } = require('./secret.rinkeby.json');
 
 module.exports = {
-  solidity: "0.6.12",
+    solidity:{
+       version: "0.6.12",
+       settings: {          
+            optimizer: {
+              enabled: true,
+              runs: 200
+            },
+            evmVersion: "byzantium"
+       }
+    },
     networks: {
         mainnet: {
           url: `https://mainnet.infura.io/v3/${projectId}`,

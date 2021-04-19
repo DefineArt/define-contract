@@ -6,3 +6,5 @@ secret.json
 secret.*.json
 backup/
 .openzeppelin/.session
+build/
+artifacts/
