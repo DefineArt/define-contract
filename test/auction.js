@@ -43,21 +43,24 @@ describe('test auction', function () {
     beforeEach('auction', async () => {
         await dfa.connect(owner).setArtist(creator1.address, true);
         await dfa.connect(creator1).mint();
+        await dfa.connect(creator1).mint();
         await dfa.connect(creator1).approve(auction.address, 1);
+        await dfa.connect(creator1).approve(auction.address, 2);
     });
 
     it('auction should work correctly', async () => {
       const name = "ERC721";
       await auction.connect(creator1).createErc721(name, dfa.address, AddressZero, 1, ETH, ETH, CONFIRMTIME, false)
-      await expect(auction.connect(bidder1).bid(0, ETH, {value: ETH}))
+      await auction.connect(creator1).createErc721(name, dfa.address, AddressZero, 2, ETH, ETH, CONFIRMTIME, false)
+      await expect(auction.connect(bidder1).bid(1, ETH, {value: ETH}))
         .to.emit(auction, 'Bid')
-        .withArgs(bidder1.address, 0, ETH);
+        .withArgs(bidder1.address, 1, ETH);
       await ethers.provider.send("evm_increaseTime", [CONFIRMTIME])
-      let poolid = await indexer.get721Auction(dfa.address, 1);
-      expect(poolid.toString()).to.equal("0")
-      await expect(auction.connect(bidder1).bidderClaim(0))
+      let poolid = await indexer.get721Auction(dfa.address, 2);
+      expect(poolid.toString()).to.equal("1")
+      await expect(auction.connect(bidder1).bidderClaim(1))
         .to.emit(auction, 'Claimed')
-        .withArgs(bidder1.address, 0)
+        .withArgs(bidder1.address, 1)
       poolid = await indexer.get721Auction(dfa.address, 1);
       expect(poolid.toString()).to.equal("0")
     });
