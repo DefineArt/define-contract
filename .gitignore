@@ -5,6 +5,7 @@ node_modules/
 secret.json
 secret.*.json
 backup/
+cache/
 .openzeppelin/.session
 build/
 artifacts/
