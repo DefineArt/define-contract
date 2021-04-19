@@ -3,13 +3,14 @@
 pragma solidity ^0.6.0;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts-ethereum-package/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./Governable.sol";
 import "./interfaces/IERC1155.sol";
+import "./NFTIndexer.sol";
 
 contract FixedSwapNFT is Configurable, IERC721Receiver {
     using SafeMath for uint;
@@ -59,6 +60,8 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     mapping(uint => uint) public swappedAmount0P;
     // pool index => swapped amount of token1
     mapping(uint => uint) public swappedAmount1P;
+
+    address indexer; 
 
     event Created(address indexed sender, uint indexed index, Pool pool);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
@@ -135,14 +138,6 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         require(duration != 0, "the value of duration is zero.");
         require(bytes(name).length <= 15, "the length of name is too long");
 
-        // transfer tokenId of token0 to this contract
-        if (nftType == TypeErc721) {
-            require(amountTotal0 == 1, "invalid amountTotal0");
-            IERC721(token0).safeTransferFrom(msg.sender, address(this), tokenId);
-        } else {
-            require(amountTotal0 != 0, "invalid amountTotal0");
-            IERC1155(token0).safeTransferFrom(msg.sender, address(this), tokenId, amountTotal0, "");
-        }
 
         // creator pool
         Pool memory pool;
@@ -161,6 +156,17 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         pools.push(pool);
         myCreatedP[msg.sender] = pools.length;
         myNameP[name] = pools.length;
+
+        // transfer tokenId of token0 to this contract
+        if (nftType == TypeErc721) {
+            require(amountTotal0 == 1, "invalid amountTotal0");
+            IERC721(token0).safeTransferFrom(msg.sender, address(this), tokenId);
+            NFTIndexer(indexer).new721Fixswap(token0, tokenId, pools.length - 1);
+        } else {
+            require(amountTotal0 != 0, "invalid amountTotal0");
+            IERC1155(token0).safeTransferFrom(msg.sender, address(this), tokenId, amountTotal0, "");
+            NFTIndexer(indexer).new1155Fixswap(token0, pool.creator, tokenId, pools.length - 1);
+        }
 
         emit Created(msg.sender, index, pool);
     }
