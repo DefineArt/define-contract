@@ -1,7 +1,14 @@
+const { expect } = require('chai');
+const chai = require('chai');
+const { solidity } = require('ethereum-waffle');
+
+chai.use(solidity);
 async function main() {
-    const { constants, provider, BigNumber, utils } = ethers;
+  const { constants, provider, BigNumber, utils } = ethers;
+
     const { AddressZero } = constants;
     const ETH = utils.parseEther('1');
+    const creator = '0x1D1Cf610c434c240654D2D1723698Ff03Eef7B0C';
     const ZERO = BigNumber.from(0);
     const SUPPLY = ETH.mul(1000000);
     const STAKE_AMOUNT = ETH.mul(100);
@@ -9,35 +16,28 @@ async function main() {
     const MAX_AMOUNT = ETH.mul(120);
     const FIL_AMOUNT = ETH.mul(100);
     const CONFIRMTIME = 2500;
+  
+    this.EnglishAuctionNFT = await ethers.getContractFactory("EnglishAuctionNFT");
+    this.DFA721NFT = await ethers.getContractFactory("DFA721NFT");
+    this.NFTIndexer = await ethers.getContractFactory("NFTIndexer");
 
-    const EnglishAuctionNFT = await ethers.getContractFactory("EnglishAuctionNFT");
-    const DFA721NFT = await ethers.getContractFactory("DFA721NFT");
-    const DFA1155NFT = await ethers.getContractFactory("DFA1155NFT");
-    const NFTIndexer = await ethers.getContractFactory("NFTIndexer");
-    const dfa721 = await DFA721NFT.attach('0x5966c78727154cfc7bd5F791047F2319FDc2f8f7')
-    const dfa1155 = await DFA1155NFT.attach('0x4984BdA1485b7Ec7DC3789aF408118B507FB303c')
-    const creator = '0x1D1Cf610c434c240654D2D1723698Ff03Eef7B0C';
-    const auction = await EnglishAuctionNFT.attach('0xcD3260bf3b3EbD706b5d44A608a8691ef386777c')
+    let dfa = await DFA721NFT.attach('0xF02e9f5f063912998163069DcDaC2d6b6F9000e4');
+    let indexer = await NFTIndexer.attach('0x6b21Edd92822E6Edf3a50b3b49Bf9885C3c0Bed0');
+    let auction = await EnglishAuctionNFT.attach('0x2313acEd4Acc8065886744049D848B6eFB80F34D');
+    await indexer.setAuction(auction.address)
+    await auction.setIndexer(indexer.address)
 
-    await dfa721.approve(auction.address, 14);
-
-    const name721 = "721 / TEST TOKEN";
-    const token0721 = dfa721.address;
-    const token1721 = '';
-    const tokenId721 = 14;
-    const amountMin1721 = ETH.div(100);
-    const amountMinIncr1721 = ETH.div(5);
-    const confirmTime721 = 30 * 60;
-    
-    await auction.createErc721(
-        name721, token0721, token1721, tokenId721, amountMin1721, amountMinIncr1721, confirmTime721, {
-        from: creator,
-    });
-    const pool721 = await auction.pools();
-    console.log('pools', pool721);
+    await dfa.setArtist(creator, true)
+    console.log('approved')
+    //await dfa.connect(creator).mint();
+    await dfa.approve(auction.address, 1)
+    await auction.connect(creator).createErc721("ERC721", dfa.address, AddressZero, 1, ETH, ETH, CONFIRMTIME, false)
+    await ethers.provider.send("evm_increaseTime", [CONFIRMTIME])
+    poolid = await indexer.get721Auction(dfa.address, 2);
+    console.log('pools', poolid);
 }
 main()
-  .then(() => process.exit(0))
+  .then(() => process.exit(0))  
   .catch(error => {
     console.error(error);
     process.exit(1);
