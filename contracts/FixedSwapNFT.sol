@@ -192,7 +192,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         if (pool.token1 == address(0)) {
             require(amount1 == msg.value, "invalid ETH amount");
             // transfer ETH to creator
-            pool.creator.transfer(pool.amountTotal1);
+            pool.creator.transfer(amount1);
         } else {
             IERC20(pool.token1).safeTransferFrom(msg.sender, pool.creator, amount1);
         }
@@ -201,7 +201,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         if (pool.nftType == TypeErc721) {
             IERC721(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId);
         } else {
-            IERC1155(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId, pool.amountTotal0, "");
+            IERC1155(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId, amount0, "");
         }
 
         emit Swapped(msg.sender, index, amount0, amount1);
