@@ -61,7 +61,7 @@ describe('test auction', function () {
       await expect(auction.connect(bidder1).bidderClaim(1))
         .to.emit(auction, 'Claimed')
         .withArgs(bidder1.address, 1)
-      poolid = await indexer.get721Auction(dfa.address, 1);
+      poolid = await indexer.get721Auction(dfa.address, 2);
       expect(poolid.toString()).to.equal("0")
     });
 

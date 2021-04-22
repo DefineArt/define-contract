@@ -34,7 +34,7 @@ contract NFTIndexer is Governable {
         auction = _auction;
     }
 
-    function setFixswp(address _fixswap) external governance returns (bool) {
+    function setFixswap(address _fixswap) external governance returns (bool) {
         fixswap = _fixswap;
     }
 
