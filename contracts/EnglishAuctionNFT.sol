@@ -311,8 +311,6 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
                 } else {
                     IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
                 }
-                IERC721(pool.token0).safeTransferFrom(address(this), winner, pool.tokenId);
-                myClaimedP[winner][index] = true;
             }
         } else {
             // transfer token0 back to creator
@@ -330,22 +328,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         myClaimedP[sender][index] = true;
 
         Pool memory pool = pools[index];
-        uint amount1 = currentBidderAmount1P[index];
-
-        if (amount1 > 0) {
-            if (token1P[index] == address(0)) {
-                // transfer ETH to creator
-                uint256 auctionFee = 0;
-                if (feeTo != address(0) && fee > 0) {
-                    auctionFee = amount1.mul(fee).div(feeMax);
-                    feeTo.transfer(auctionFee);
-                }
-                pool.creator.transfer(amount1.sub(auctionFee));
-            } else {
-                IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
-            }
-            creatorClaimedP[index] = true;
-        }
+      
         // transfer token0 to bidder
         if (pool.nftType == TypeErc721) {
             IERC721(pool.token0).safeTransferFrom(address(this), sender, pool.tokenId);
