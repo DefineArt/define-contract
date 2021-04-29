@@ -74,11 +74,11 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     // token0 address => true or false
     mapping(address => bool) public token0List;
 
-    uint256 fee;
+    uint256 public fee;
 
-    uint256 feeMax;
+    uint256 public feeMax;
 
-    address payable feeTo;
+    address public payable feeTo;
 
     // pool add time after bid
     mapping(uint => bool) public poolTime;

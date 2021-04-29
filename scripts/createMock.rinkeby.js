@@ -28,7 +28,6 @@ async function main() {
     console.log(dfa.address)
     let indexer = await NFTIndexer.attach('0x6b21Edd92822E6Edf3a50b3b49Bf9885C3c0Bed0');
     let auction = await EnglishAuctionNFT.attach('0x2313acEd4Acc8065886744049D848B6eFB80F34D');
-        /*
 
     await dfa.setArtist(accounts[0], true)
     await dfa.mint()
@@ -37,7 +36,6 @@ async function main() {
 
     await dfa.approve(auction.address, 2)
     await auction.createErc721("ERC721", dfa.address, AddressZero, 2, ETH, ETH, CONFIRMTIME, false)
-    */
     poolid = await indexer.get721Auction(dfa.address, 2);
     console.log('pools', poolid);
 }

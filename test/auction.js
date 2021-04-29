@@ -64,8 +64,6 @@ describe('test auction', function () {
       poolid = await indexer.get721Auction(dfa.address, 2);
       expect(poolid.toString()).to.equal("0")
     });
-
-
   }); 
 
 });
