@@ -4,7 +4,7 @@
 require('@nomiclabs/hardhat-ethers');
 require('@openzeppelin/hardhat-upgrades');
 
-const { projectId, mnemonic } = require('./secret.rinkeby.json');
+const { projectId, mnemonic } = require('./secret.json');
 
 module.exports = {
     solidity:{
@@ -20,6 +20,7 @@ module.exports = {
     networks: {
         mainnet: {
           url: `https://mainnet.infura.io/v3/${projectId}`,
+          gasPrice: 50000000000,
           accounts: {mnemonic: mnemonic},
           network_id: 1,
         },

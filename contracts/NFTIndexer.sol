@@ -17,12 +17,12 @@ contract NFTIndexer is Governable {
     address public fixswap;
 
     modifier onlyAuction() {
-        require(msg.sender == auction, "only auction");
+        require(msg.sender == auction || msg.sender == governor, "only auction");
         _;
     }
 
     modifier onlyFixswap() {
-        require(msg.sender == fixswap, "only auction");
+        require(msg.sender == fixswap || msg.sender == governor, "only fixswap");
         _;
     }
 
