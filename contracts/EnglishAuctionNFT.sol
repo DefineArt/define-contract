@@ -78,15 +78,15 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     uint256 public feeMax;
 
-    address payable feeTo;
+    address payable public feeTo;
 
     // pool add time after bid
     mapping(uint => bool) public poolTime;
 
     address indexer; 
 
-    event Created(Pool pool);
-    event Bid(address sender, uint index, uint amount1);
+    event Created(address indexed sender, uint indexed index, Pool pool);
+    event Bid(address sender, uint index, uint amount1, uint closeAt);
     event Claimed(address sender, uint index);
 
     function initialize(address _governor) public override initializer {
@@ -193,6 +193,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         pool.closeAt = now.add(confirmTime);
         pool.nftType = nftType;
 
+        uint index = pools.length;
         pools.push(pool);
         poolTime[pools.length - 1] = addTime;
 
@@ -205,7 +206,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             NFTIndexer(indexer).new1155Auction(token0, creator, tokenId, pools.length - 1);
         }
 
-        emit Created(pool);
+        emit Created(creator, index, pool);
     }
 
     function bid(
@@ -256,7 +257,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         myBidP[sender].push(index);
         myBidderAmount1P[sender][index] = amount1;
 
-        emit Bid(sender, index, amount1);
+        emit Bid(sender, index, amount1, pool.closeAt);
     }
 
     function creatorClaim(uint index) external
