@@ -4,7 +4,7 @@ pragma experimental ABIEncoderV2;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "./Governable.sol";
 
-contract FreeExhibitionHallNFT is Governable, ERC721 {
+contract DFA721NFT is Governable, ERC721 {
 
   event Mint(address indexed owner, uint256 indexed tokenId);
 
