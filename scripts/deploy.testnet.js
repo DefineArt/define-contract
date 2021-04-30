@@ -1,35 +1,42 @@
-
 async function main() {
-    const { provider, BigNumber, utils } = ethers;
-    const ETH = utils.parseEther('1');
-    const accounts = await ethers.provider.listAccounts()
-    console.log('owner address', accounts[0])
-    const EnglishAuctionNFT = await ethers.getContractFactory("EnglishAuctionNFT");
-    const FixedSwapNFT = await ethers.getContractFactory("FixedSwapNFT");
-    const DFA721NFT = await ethers.getContractFactory("DFA721NFT");
-    const DFA1155NFT = await ethers.getContractFactory("DFA1155NFT");
-    console.log("deploying EnglishAuctionNFT")
-    //const auction = await upgrades.deployProxy(EnglishAuctionNFT, [accounts[0]], {initializer: "initialize"})
-    const auction = await EnglishAuctionNFT.attach("0xef1C46Bb077f0e802Df86a578ce928EE58f3c762")
-    console.log("EnglishAuctionNFT address:", auction.address)
-    console.log("deploying FixedSwapNFT")
-    //const swap = await upgrades.deployProxy(FixedSwapNFT, [accounts[0]], {initializer: "initialize"})
-    const swap = await EnglishAuctionNFT.attach("0xd15EE05677B03373BE57076c72De5e928186553A")
-    console.log("FixedSwapNFT address:", swap.address)
+  const { provider, BigNumber, utils } = ethers;
+  const ETH = utils.parseEther('1');
+  const accounts = await ethers.provider.listAccounts()
+  console.log('owner address', accounts[0])
+  const EnglishAuctionNFT = await ethers.getContractFactory("EnglishAuctionNFT");
+  const FixedSwapNFT = await ethers.getContractFactory("FixedSwapNFT");
+  const DFA721NFT = await ethers.getContractFactory("DFA721NFT");
+  const DFA1155NFT = await ethers.getContractFactory("DFA1155NFT");
+  const NFTIndexer = await ethers.getContractFactory("NFTIndexer");
 
-    //const dfa721 = await DFA721NFT.deploy("d", "d", "staging-api.de-fine.art/api/tokens/")
-    const dfa721 = await DFA721NFT.attach('0xC2F81FE51ed251F9a7631BA3FeAC8388b67257B5')
-    //const dfa1155 = await DFA1155NFT.deploy("d", "d", "staging-api.de-fine.art/api/tokens/")
-    const dfa1155 = await DFA1155NFT.attach('0x4984BdA1485b7Ec7DC3789aF408118B507FB303c')
-    await dfa721.setArtist("0x700BCC47dd1CeD09642DFf1CaF74A657B69b9F55", true)
-    await dfa1155.setArtist("0x700BCC47dd1CeD09642DFf1CaF74A657B69b9F55", true)
-    console.log(dfa721.address)
-    console.log(dfa1155.address)
+  const dfa721 = await DFA721NFT.deploy("d", "d", "staging-api.de-fine.art/api/tokens/")
+  console.log('DFA721 ADDRESS:', dfa721.address)
+  const dfa1155 = await DFA1155NFT.deploy("d", "d", "staging-api.de-fine.art/api/tokens/")
+  console.log('DFA1155 ADDRESS:', dfa1155.address)
+  const auction = await upgrades.deployProxy(EnglishAuctionNFT, [accounts[0]], {initializer: "initialize"})
+  console.log('English Auction address:', auction.address)
+  const fixswap = await upgrades.deployProxy(FixedSwapNFT, [accounts[0]], {initializer: "initialize"})
+  console.log('Fix Swap address:', fixswap.address)
+  const indexer = await upgrades.deployProxy(NFTIndexer, [accounts[0]], {initializer: "initialize"})
+  console.log('NFT Indexer address:', indexer.address)
+
+  await dfa721.setBaseURI("https://api.de-fine.art/v2/tokens/1/ERC721/")
+  await fixswap.setIndexer(indexer.address)
+  await indexer.setFixswap(fixswap.address)
+  await indexer.setAuction(auction.address)
+  await auction.setIndexer(indexer.address)
+
+  await fixswap.setFee(200)
+  await fixswap.setFeeMax(10000)
+  await auction.setFee(200)
+  await auction.setFeeMax(10000)
+
+  await dfa721.setArtist("0x1D1Cf610c434c240654D2D1723698Ff03Eef7B0C", true)
 }
 
 main()
-  .then(() => process.exit(0))
-  .catch(error => {
-    console.error(error);
-    process.exit(1);
-  });
+.then(() => process.exit(0))
+.catch(error => {
+  console.error(error);
+  process.exit(1);
+});

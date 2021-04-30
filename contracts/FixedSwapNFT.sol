@@ -65,7 +65,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
     uint256 public feeMax;
 
-    address public payable feeTo;
+    address payable feeTo;
 
     address indexer; 
 
