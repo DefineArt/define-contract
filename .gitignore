@@ -9,3 +9,4 @@ cache/
 .openzeppelin/.session
 build/
 artifacts/
+.DS_Store
