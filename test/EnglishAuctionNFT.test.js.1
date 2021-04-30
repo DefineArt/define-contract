@@ -1,19 +1,10 @@
 // Load dependencies
 const { accounts, contract, web3 } = require('@openzeppelin/test-environment');
-const { expect } = require('chai');
-const { BN, constants, ether, expectEvent, expectRevert, time } = require('@openzeppelin/test-helpers');
-const { ZERO_ADDRESS } = constants;
 
-// Load compiled artifacts
-const EnglishAuctionNFT = contract.fromArtifact('EnglishAuctionNFT');
-const USDT = contract.fromArtifact(require('path').resolve('test/TetherToken'));
-const ERC20 = contract.fromArtifact(require('path').resolve('test/ERC20'));
-const ERC721 = contract.fromArtifact(require('path').resolve('test/ERC721'));
-const ERC1155 = contract.fromArtifact(require('path').resolve('test/ERC1155'));
+const chai, { expect } = require('chai');
+const { solidity } = require('ethereum-waffle');
 
-function usd (n) {
-    return ether(n).div(new BN('10').pow(new BN('12')));
-}
+chai.use(solidity);
 
 // Start test block
 describe('EnglishAuctionNFT', function () {

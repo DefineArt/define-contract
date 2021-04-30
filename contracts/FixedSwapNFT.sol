@@ -3,13 +3,14 @@
 pragma solidity ^0.6.0;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts-ethereum-package/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts-ethereum-package/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./Governable.sol";
 import "./interfaces/IERC1155.sol";
+import "./NFTIndexer.sol";
 
 contract FixedSwapNFT is Configurable, IERC721Receiver {
     using SafeMath for uint;
@@ -60,6 +61,14 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     // pool index => swapped amount of token1
     mapping(uint => uint) public swappedAmount1P;
 
+    uint256 public fee;
+
+    uint256 public feeMax;
+
+    address payable public feeTo;
+
+    address indexer; 
+
     event Created(address indexed sender, uint indexed index, Pool pool);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
     event Claimed(address indexed sender, uint indexed index, uint amount0);
@@ -67,6 +76,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     function initialize(address _governor) public override initializer {
         require(msg.sender == governor || governor == address(0), "invalid governor");
         governor = _governor;
+        feeMax = 10000;
     }
 
     function createErc721(
@@ -128,21 +138,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint duration,
         uint nftType
     ) private
-        isPoolNotCreate(msg.sender)
-        nameNotBeenToken(name)
     {
         require(amountTotal1 != 0, "the value of amountTotal1 is zero.");
         require(duration != 0, "the value of duration is zero.");
         require(bytes(name).length <= 15, "the length of name is too long");
 
-        // transfer tokenId of token0 to this contract
-        if (nftType == TypeErc721) {
-            require(amountTotal0 == 1, "invalid amountTotal0");
-            IERC721(token0).safeTransferFrom(msg.sender, address(this), tokenId);
-        } else {
-            require(amountTotal0 != 0, "invalid amountTotal0");
-            IERC1155(token0).safeTransferFrom(msg.sender, address(this), tokenId, amountTotal0, "");
-        }
 
         // creator pool
         Pool memory pool;
@@ -162,13 +162,23 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         myCreatedP[msg.sender] = pools.length;
         myNameP[name] = pools.length;
 
+        // transfer tokenId of token0 to this contract
+        if (nftType == TypeErc721) {
+            require(amountTotal0 == 1, "invalid amountTotal0");
+            IERC721(token0).safeTransferFrom(msg.sender, address(this), tokenId);
+            NFTIndexer(indexer).new721Fixswap(token0, tokenId, pools.length - 1);
+        } else {
+            require(amountTotal0 != 0, "invalid amountTotal0");
+            IERC1155(token0).safeTransferFrom(msg.sender, address(this), tokenId, amountTotal0, "");
+            NFTIndexer(indexer).new1155Fixswap(token0, pool.creator, tokenId, pools.length - 1);
+        }
+
         emit Created(msg.sender, index, pool);
     }
 
     function swap(uint index, uint amount0) external payable
         isPoolExist(index)
         isPoolNotClosed(index)
-        isPoolNotSwap(index)
     {
         Pool storage pool = pools[index];
         require(amount0 >= 1 && amount0 <= pool.amountTotal0, "invalid amount0");
@@ -186,7 +196,13 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         if (pool.token1 == address(0)) {
             require(amount1 == msg.value, "invalid ETH amount");
             // transfer ETH to creator
-            pool.creator.transfer(pool.amountTotal1);
+
+            uint256 swapFee = 0;
+            if (feeTo != address(0) && fee > 0) {
+                swapFee = amount1.mul(fee).div(feeMax);
+                feeTo.transfer(swapFee);
+            }
+            pool.creator.transfer(amount1.sub(swapFee));
         } else {
             IERC20(pool.token1).safeTransferFrom(msg.sender, pool.creator, amount1);
         }
@@ -195,7 +211,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         if (pool.nftType == TypeErc721) {
             IERC721(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId);
         } else {
-            IERC1155(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId, pool.amountTotal0, "");
+            IERC1155(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId, amount0, "");
+        }
+
+        if (swappedAmount0P[index] == pool.amountTotal0) {
+            pools[index].closeAt = now;
         }
 
         emit Swapped(msg.sender, index, amount0, amount1);
@@ -203,8 +223,6 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
     function creatorClaim(uint index) external
         isPoolExist(index)
-        isPoolClosed(index)
-        isPoolNotSwap(index)
     {
         require(isCreator(msg.sender, index), "sender is not pool creator");
         require(!creatorClaimedP[index], "creator has claimed this pool");
@@ -219,6 +237,8 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         } else {
             IERC1155(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId, pool.amountTotal0.sub(swappedAmount0P[index]), "");
         }
+
+        pools[index].closeAt = now;
 
         emit Claimed(msg.sender, index, pool.amountTotal0.sub(swappedAmount0P[index]));
     }
@@ -239,6 +259,26 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         return pools.length;
     }
 
+    function setFee(uint256 _fee) external governance returns (bool) {
+        fee = _fee;
+        return  true;
+    }
+
+    function setFeeMax(uint256 _feeMax) external governance returns (bool) {
+        feeMax = _feeMax;
+        return  true;
+    }
+
+    function setFeeTo(address payable _feeTo) external governance returns (bool) {
+        feeTo = _feeTo;
+        return  true;
+    }
+
+    function setIndexer(address _indexer) external governance returns (bool) {
+        indexer = _indexer;
+        return  true;
+    }
+
     function onERC721Received(address, address, uint, bytes calldata) external override returns (bytes4) {
         return this.onERC721Received.selector;
     }
@@ -257,35 +297,9 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         _;
     }
 
-    modifier isPoolNotSwap(uint index) {
-        require(!swappedP[index], "this pool is swapped");
-        _;
-    }
-
-    modifier isPoolNotCreate(address creator) {
-        if (myCreatedP[creator] > 0) {
-            if (swappedP[myCreatedP[creator]-1]) {
-                delete myCreatedP[creator];
-            } else {
-                revert("a pool has created by this address");
-            }
-        }
-        _;
-    }
-
     modifier isPoolExist(uint index) {
         require(index < pools.length, "this pool does not exist");
         _;
     }
 
-    modifier nameNotBeenToken(string memory name) {
-        // check if someone has take this name
-        if (myNameP[name] > 0) {
-            uint index = myNameP[name] - 1;
-            if ((myCreatedP[pools[index].creator] > 0) && (pools[index].closeAt > now)) {
-                revert("a live pool has been created by this name");
-            }
-        }
-        _;
-    }
 }
