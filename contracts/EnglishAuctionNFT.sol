@@ -88,6 +88,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     event Created(address indexed sender, uint indexed index, Pool pool);
     event Bid(address sender, uint index, uint amount1, uint closeAt);
     event Claimed(address sender, uint index);
+    event AuctionClosed(address indexed sender, uint indexed index);
 
     function initialize(address _governor) public override initializer {
         super.initialize(_governor);
@@ -338,6 +339,19 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         }
 
         emit Claimed(sender, index);
+    }
+
+    function closeAuction(uint index) external
+        isPoolExist(index)
+        isPoolNotClosed(index)
+    {
+        address payable sender = msg.sender;
+        require(isCreator(sender, index), "sender is not pool creator");
+
+        Pool storage pool = pools[index];
+        pool.closeAt = now;
+
+        emit AuctionClosed(sender, index);
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) external override returns (bytes4) {
