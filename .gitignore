@@ -10,3 +10,4 @@ cache/
 build/
 artifacts/
 .DS_Store
+scripts/*
