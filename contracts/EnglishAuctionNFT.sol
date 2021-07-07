@@ -85,9 +85,10 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     address indexer; 
 
-    event Created(address indexed sender, uint indexed index, Pool pool);
+    event Created(address indexed sender, uint indexed index, Pool pool, address token1);
     event Bid(address sender, uint index, uint amount1, uint closeAt);
     event Claimed(address sender, uint index);
+    event AuctionClosed(address indexed sender, uint indexed index);
 
     function initialize(address _governor) public override initializer {
         super.initialize(_governor);
@@ -116,7 +117,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         }
         uint tokenAmount0 = 1;
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, tokenId, amounts, confirmTime, TypeErc721, addTime);
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc721, addTime);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -146,7 +147,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             require(token0List[token0], "invalid token0");
         }
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, tokenId, amounts, confirmTime, TypeErc1155, addTime);
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc1155, addTime);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -157,6 +158,8 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         string memory name,
         // address of token0
         address token0,
+        // address of token1
+        address token1,
         // token id of token0
         uint tokenId,
         // 0: uint tokenAmount0, amount of token id of token0
@@ -176,7 +179,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         require(amounts[0] != 0, "the value of tokenAmount0 is zero");
         require(amounts[2] != 0, "the value of amountMinIncr1 is zero");
         require(confirmTime >= 5 minutes, "the value of confirmTime less than 5 minutes");
-        require(confirmTime <= 1 days, "the value of confirmTime is exceeded 1 day");
+        require(confirmTime <= 7 days, "the value of confirmTime is exceeded 7 days");
         require(bytes(name).length <= 15, "the length of name is too long");
 
 
@@ -206,7 +209,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             NFTIndexer(indexer).new1155Auction(token0, creator, tokenId, pools.length - 1);
         }
 
-        emit Created(creator, index, pool);
+        emit Created(creator, index, pool, token1);
     }
 
     function bid(
@@ -338,6 +341,19 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         }
 
         emit Claimed(sender, index);
+    }
+
+    function closeAuction(uint index) external
+        isPoolExist(index)
+        isPoolNotClosed(index)
+    {
+        address payable sender = msg.sender;
+        require(isCreator(sender, index), "sender is not pool creator");
+
+        Pool storage pool = pools[index];
+        pool.closeAt = now;
+
+        emit AuctionClosed(sender, index);
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) external override returns (bytes4) {

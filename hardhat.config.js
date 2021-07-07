@@ -27,17 +27,17 @@ module.exports = {
         rinkeby: {
             url: `https://rinkeby.infura.io/v3/${projectId}`,
             accounts: {mnemonic: mnemonic},
-            networkId: 4
+            network_id: 4
         },
         testnet: {
             url: `https://data-seed-prebsc-1-s1.binance.org:8545`,
             accounts: {mnemonic: mnemonic},
-            networkId: 97
+            network_id: 97
         },
         bsc: {
             url: `https://bsc-dataseed.binance.org`,
             accounts: {mnemonic: mnemonic},
-            networkId: 1
+            network_id: 1
         }
   },
 };

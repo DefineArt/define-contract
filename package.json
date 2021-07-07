@@ -15,6 +15,7 @@
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
     "deploy:rinkeby": "npx hardhat run --network rinkeby scripts/deploy.rinkeby.js",
-    "deploy:testnet": "npx hardhat run --network testnet scripts/deploy.testnet.js"
+    "deploy:testnet": "npx hardhat run --network testnet scripts/deploy.testnet.js",
+    "upgrade:rinkeby": "npx hardhat run --network rinkeby scripts/upgrade.rinkeby.js"
   }
 }
