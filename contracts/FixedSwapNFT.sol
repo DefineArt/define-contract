@@ -38,6 +38,8 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint closeAt;
         // NFT token type
         uint nftType;
+        // the timestamp in seconds the pool will start
+        uint startAt;
     }
 
     Pool[] public pools;
@@ -99,7 +101,33 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint amountTotal0 = 1;
         _create(
             name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc721
+            duration, TypeErc721, now
+        );
+    }
+
+    function createErc721WithStartTime (
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // total amount of token1
+        uint amountTotal1,
+        // duration time
+        uint duration,
+        // start time
+        uint startTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        uint amountTotal0 = 1;
+        _create(
+            name, token0, token1, tokenId, amountTotal0, amountTotal1,
+            duration, TypeErc721, startTime
         );
     }
 
@@ -124,7 +152,34 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         }
         _create(
             name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc1155
+            duration, TypeErc1155, now
+        );
+    }
+
+    function createErc1155WithStartTime(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // total amount of token0
+        uint amountTotal0,
+        // total amount of token1
+        uint amountTotal1,
+        // duration time
+        uint duration,
+        // start time
+        uint startTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        _create(
+            name, token0, token1, tokenId, amountTotal0, amountTotal1,
+            duration, TypeErc1155, startTime
         );
     }
 
@@ -136,13 +191,21 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint amountTotal0,
         uint amountTotal1,
         uint duration,
-        uint nftType
+        uint nftType,
+        uint startTime
     ) private
     {
+        require(startTime > 0 "start time should not be zero");
         require(amountTotal1 != 0, "the value of amountTotal1 is zero.");
         require(duration != 0, "the value of duration is zero.");
         require(bytes(name).length <= 15, "the length of name is too long");
 
+        uint closeTime = 0
+        if (startTime <= now) {
+            closeTime = now.add(now + duration)
+        } else {
+            closeTime = now.add(startTime + duration)
+        }
 
         // creator pool
         Pool memory pool;
@@ -153,8 +216,9 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         pool.tokenId = tokenId;
         pool.amountTotal0 = amountTotal0;
         pool.amountTotal1 = amountTotal1;
-        pool.closeAt = now.add(duration);
+        pool.closeAt = closeTime;
         pool.nftType = nftType;
+        pool.startAt = startTime;
 
         uint index = pools.length;
 
@@ -179,6 +243,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     function swap(uint index, uint amount0) external payable
         isPoolExist(index)
         isPoolNotClosed(index)
+        isPoolStarted(index)
     {
         Pool storage pool = pools[index];
         require(amount0 >= 1 && amount0 <= pool.amountTotal0, "invalid amount0");
@@ -299,6 +364,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
     modifier isPoolExist(uint index) {
         require(index < pools.length, "this pool does not exist");
+        _;
+    }
+
+    modifier isPoolStarted(uint index) {
+        require(pools[index].startAt <= now, "this pool is not started yet");
         _;
     }
 
