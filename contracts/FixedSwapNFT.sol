@@ -195,16 +195,16 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint startTime
     ) private
     {
-        require(startTime > 0 "start time should not be zero");
+        require(startTime > 0, "start time should not be zero");
         require(amountTotal1 != 0, "the value of amountTotal1 is zero.");
         require(duration != 0, "the value of duration is zero.");
         require(bytes(name).length <= 15, "the length of name is too long");
 
-        uint closeTime = 0
+        uint closeTime = 0;
         if (startTime <= now) {
-            closeTime = now.add(now + duration)
+            closeTime = now.add(now + duration);
         } else {
-            closeTime = now.add(startTime + duration)
+            closeTime = now.add(startTime + duration);
         }
 
         // creator pool
