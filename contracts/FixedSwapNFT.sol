@@ -70,9 +70,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     address indexer; 
 
     // the timestamp in seconds the pool will start
-    uint[] public startAt;
-
-    mapping(uint => uint) public startAt2;
+    mapping(uint => uint) public startAt;
 
     event Created(address indexed sender, uint indexed index, Pool pool, uint startTime);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
@@ -225,7 +223,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint index = pools.length;
 
         pools.push(pool);
-        startAt2[index] = startTime;
+        startAt[index] = startTime;
         myCreatedP[msg.sender] = pools.length;
         myNameP[name] = pools.length;
 
@@ -371,8 +369,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     }
 
     modifier isPoolStarted(uint index) {
-        require(startAt2[index] <= now, "this pool is not started yet");
+        require(startAt[index] <= now, "this pool is not started yet");
         _;
     }
 
+    function getStartTime(uint index) external view returns (uint) {
+        return startAt[index];
+    }
 }
