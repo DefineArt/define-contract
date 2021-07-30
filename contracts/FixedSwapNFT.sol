@@ -38,8 +38,6 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         uint closeAt;
         // NFT token type
         uint nftType;
-        // the timestamp in seconds the pool will start
-        uint startAt;
     }
 
     Pool[] public pools;
@@ -71,7 +69,12 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
     address indexer; 
 
-    event Created(address indexed sender, uint indexed index, Pool pool);
+    // the timestamp in seconds the pool will start
+    uint[] public startAt;
+
+    mapping(uint => uint) public startAt2;
+
+    event Created(address indexed sender, uint indexed index, Pool pool, uint startTime);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
     event Claimed(address indexed sender, uint indexed index, uint amount0);
 
@@ -202,9 +205,9 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
         uint closeTime = 0;
         if (startTime <= now) {
-            closeTime = now.add(now + duration);
+            closeTime = now.add(duration);
         } else {
-            closeTime = now.add(startTime + duration);
+            closeTime = startTime.add(duration);
         }
 
         // creator pool
@@ -218,11 +221,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         pool.amountTotal1 = amountTotal1;
         pool.closeAt = closeTime;
         pool.nftType = nftType;
-        pool.startAt = startTime;
 
         uint index = pools.length;
 
         pools.push(pool);
+        startAt2[index] = startTime;
         myCreatedP[msg.sender] = pools.length;
         myNameP[name] = pools.length;
 
@@ -237,7 +240,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             NFTIndexer(indexer).new1155Fixswap(token0, pool.creator, tokenId, pools.length - 1);
         }
 
-        emit Created(msg.sender, index, pool);
+        emit Created(msg.sender, index, pool, startTime);
     }
 
     function swap(uint index, uint amount0) external payable
@@ -368,7 +371,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     }
 
     modifier isPoolStarted(uint index) {
-        require(pools[index].startAt <= now, "this pool is not started yet");
+        require(startAt2[index] <= now, "this pool is not started yet");
         _;
     }
 
