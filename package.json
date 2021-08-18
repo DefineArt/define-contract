@@ -1,0 +1,8 @@
+{
+    "devDependencies": {
+        "@openzeppelin/contracts": "^3.4.0"
+    },
+    "dependencies": {
+        "tronbox": "^2.7.24"
+    }
+}
