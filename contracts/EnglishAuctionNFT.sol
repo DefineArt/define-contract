@@ -83,9 +83,15 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
     // pool add time after bid
     mapping(uint => bool) public poolTime;
 
-    address indexer; 
+    address indexer;
 
-    event Created(address indexed sender, uint indexed index, Pool pool, address token1);
+    // the timestamp in seconds the pool will start
+    mapping(uint => uint) public startAt;
+
+    // promo token list
+    mapping(address => uint256) public promoTokenList;
+
+    event Created(address indexed sender, uint indexed index, Pool pool, address token1, uint startTime);
     event Bid(address sender, uint index, uint amount1, uint closeAt);
     event Claimed(address sender, uint index);
     event AuctionClosed(address indexed sender, uint indexed index);
@@ -117,7 +123,70 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         }
         uint tokenAmount0 = 1;
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc721, addTime);
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc721, addTime, now);
+        if (token1 != address(0)) {
+            token1P[pools.length-1] = token1;
+        }
+    }
+
+    function createErc721WithStartTime(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // minimum amount of token1
+        uint amountMin1,
+        // minimum incremental amount of token1
+        uint amountMinIncr1,
+        // confirmation time
+        uint confirmTime,
+        // add close time after bid
+        bool addTime,
+
+        uint startTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        uint tokenAmount0 = 1;
+        uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc721, addTime, startTime);
+        if (token1 != address(0)) {
+            token1P[pools.length-1] = token1;
+        }
+    }
+
+    function createErc1155WithStartTime(
+        // name of the pool
+        string memory name,
+        // address of token0
+        address token0,
+        // address of token1
+        address token1,
+        // token id of token0
+        uint tokenId,
+        // amount of token id of token0
+        uint tokenAmount0,
+        // minimum amount of token1
+        uint amountMin1,
+        // minimum incremental amount of token1
+        uint amountMinIncr1,
+        // confirmation time
+        uint confirmTime,
+        // add close time after bid
+        bool addTime,
+
+        uint startTime
+    ) external payable {
+        if (checkToken0) {
+            require(token0List[token0], "invalid token0");
+        }
+        uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc1155, addTime, startTime);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -147,7 +216,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             require(token0List[token0], "invalid token0");
         }
         uint[3] memory amounts = [tokenAmount0, amountMin1, amountMinIncr1];
-        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc1155, addTime);
+        _create(name, token0, token1, tokenId, amounts, confirmTime, TypeErc1155, addTime, now);
         if (token1 != address(0)) {
             token1P[pools.length-1] = token1;
         }
@@ -171,17 +240,19 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         // NFT token type
         uint nftType,
 
-        bool addTime
+        bool addTime,
+
+        uint startTime
     ) private
     {
         address payable creator = msg.sender;
 
+        require(startTime > 0, "start time should not be zero");
         require(amounts[0] != 0, "the value of tokenAmount0 is zero");
         require(amounts[2] != 0, "the value of amountMinIncr1 is zero");
         require(confirmTime >= 5 minutes, "the value of confirmTime less than 5 minutes");
         require(confirmTime <= 7 days, "the value of confirmTime is exceeded 7 days");
         require(bytes(name).length <= 15, "the length of name is too long");
-
 
         // creator pool
         Pool memory pool;
@@ -193,12 +264,14 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         pool.amountMin1 = amounts[1];
         pool.amountMinIncr1 = amounts[2];
         pool.confirmTime = confirmTime;
-        pool.closeAt = now.add(confirmTime);
+        pool.closeAt = startTime.add(confirmTime);
         pool.nftType = nftType;
 
         uint index = pools.length;
         pools.push(pool);
         poolTime[pools.length - 1] = addTime;
+
+        startAt[index] = startTime;
 
         // transfer tokenId of token0 to this contract
         if (nftType == TypeErc721) {
@@ -209,7 +282,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
             NFTIndexer(indexer).new1155Auction(token0, creator, tokenId, pools.length - 1);
         }
 
-        emit Created(creator, index, pool, token1);
+        emit Created(creator, index, pool, token1, startTime);
     }
 
     function bid(
@@ -219,6 +292,7 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         uint amount1
     ) external payable
         isPoolExist(index)
+        isPoolStarted(index)
         isPoolNotClosed(index)
     {
         address payable sender = msg.sender;
@@ -303,17 +377,28 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         if (currentBidderP[index] != address(0)) {
             address payable winner = currentBidderP[index];
             uint amount1 = currentBidderAmount1P[index];
+
+            uint256 auctionFee = 0;
+            if (feeTo != address(0) && fee > 0) {
+                if (promoTokenList[token1P[index]] != 0) {
+                    auctionFee = amount1.mul(promoTokenList[token1P[index]]).div(feeMax);
+                } else {
+                    auctionFee = amount1.mul(fee).div(feeMax);
+                }
+            }
+
             if (amount1 > 0) {
                 if (token1P[index] == address(0)) {
                     // transfer ETH to creator
-                    uint256 auctionFee = 0;
-                    if (feeTo != address(0) && fee > 0) {
-                        auctionFee = amount1.mul(fee).div(feeMax);
+                    if (auctionFee > 0) {
                         feeTo.transfer(auctionFee);
                     }
                     pool.creator.transfer(amount1.sub(auctionFee));
                 } else {
-                    IERC20(token1P[index]).safeTransfer(pool.creator, amount1);
+                    IERC20(token1P[index]).safeTransfer(pool.creator, amount1.sub(auctionFee));
+                    if (auctionFee > 0) {
+                        IERC20(token1P[index]).safeTransfer(feeTo, auctionFee);
+                    }
                 }
             }
         } else {
@@ -366,6 +451,10 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
 
     function getPoolCount() external view returns (uint) {
         return pools.length;
+    }
+
+    function getStartTime(uint index) external view returns (uint) {
+        return startAt[index];
     }
 
     function setFee(uint256 _fee) external governance returns (bool) {
@@ -438,4 +527,21 @@ contract EnglishAuctionNFT is Configurable, IERC721Receiver {
         _;
     }
 
+    modifier isPoolStarted(uint index) {
+        require(startAt[index] <= now, "this pool is not started yet");
+        _;
+    }
+
+    function setPromoToken(address _promoToken, uint256 _fee) external governance returns (bool) {
+        promoTokenList[_promoToken] = _fee;
+        return true;
+    }
+
+    function getTokenRate(address _promoToken) external view returns (uint) {
+        uint rate = fee;
+        if (promoTokenList[_promoToken] != 0) {
+            rate = promoTokenList[_promoToken];
+        }
+        return rate;
+    }
 }
