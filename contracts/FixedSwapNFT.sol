@@ -75,6 +75,9 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     mapping(uint => bool) public poolIsUnique;
     mapping(address => uint) public userLimited;
 
+    // promo token list
+    mapping(address => uint256) public promoTokenList;
+
     event Created(address indexed sender, uint indexed index, Pool pool, uint startTime);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
     event Claimed(address indexed sender, uint indexed index, uint amount0);
@@ -271,7 +274,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         }
         uint256 swapFee = 0;
         if (feeTo != address(0) && fee > 0) {
-            swapFee = amount1.mul(fee).div(feeMax);
+            if (promoTokenList[pool.token1] != 0) {
+                swapFee = amount1.mul(promoTokenList[pool.token1]).div(feeMax);
+            } else {
+                swapFee = amount1.mul(fee).div(feeMax);
+            }
         }
 
         // transfer amount of token1 to creator
@@ -403,5 +410,18 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             require(now - userLimited[_address] >= 30 minutes, "this user is restricted in 30 minutes");
         }
         _;
+    }
+
+    function setPromoToken(address _promoToken, uint256 _fee) external governance returns (bool) {
+        promoTokenList[_promoToken] = _fee;
+        return true;
+    }
+
+    function getTokenRate(address _promoToken) external view returns (uint) {
+        uint rate = fee;
+        if (promoTokenList[_promoToken] != 0) {
+            rate = promoTokenList[_promoToken];
+        }
+        return rate;
     }
 }
