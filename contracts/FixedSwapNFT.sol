@@ -13,11 +13,11 @@ import "./interfaces/IERC1155.sol";
 import "./NFTIndexer.sol";
 
 contract FixedSwapNFT is Configurable, IERC721Receiver {
-    using SafeMath for uint;
+    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    uint    internal constant TypeErc721            = 0;
-    uint    internal constant TypeErc1155           = 1;
+    uint256 internal constant TypeErc721 = 0;
+    uint256 internal constant TypeErc1155 = 1;
 
     struct Pool {
         // address of pool creator
@@ -29,27 +29,27 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // address of buy token
         address token1;
         // token id of token0
-        uint tokenId;
+        uint256 tokenId;
         // total amount of token0
-        uint amountTotal0;
+        uint256 amountTotal0;
         // total amount of token1
-        uint amountTotal1;
+        uint256 amountTotal1;
         // the timestamp in seconds the pool will be closed
-        uint closeAt;
+        uint256 closeAt;
         // NFT token type
-        uint nftType;
+        uint256 nftType;
     }
 
     Pool[] public pools;
 
     // creator address => pool index + 1. if the result is 0, the account don't create any pool.
-    mapping(address => uint) public myCreatedP;
+    mapping(address => uint256) public myCreatedP;
     // name => pool index + 1
-    mapping(string => uint) public myNameP;
+    mapping(string => uint256) public myNameP;
 
     // pool index => a flag that if creator is claimed the pool
-    mapping(uint => bool) public creatorClaimedP;
-    mapping(uint => bool) public swappedP;
+    mapping(uint256 => bool) public creatorClaimedP;
+    mapping(uint256 => bool) public swappedP;
 
     // check if token0 in whitelist
     bool public checkToken0;
@@ -57,9 +57,9 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     mapping(address => bool) public token0List;
 
     // pool index => swapped amount of token0
-    mapping(uint => uint) public swappedAmount0P;
+    mapping(uint256 => uint256) public swappedAmount0P;
     // pool index => swapped amount of token1
-    mapping(uint => uint) public swappedAmount1P;
+    mapping(uint256 => uint256) public swappedAmount1P;
 
     uint256 public fee;
 
@@ -67,20 +67,37 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
     address payable public feeTo;
 
-    address indexer; 
+    address indexer;
 
     // the timestamp in seconds the pool will start
-    mapping(uint => uint) public startAt;
+    mapping(uint256 => uint256) public startAt;
 
-    mapping(uint => bool) public poolIsUnique;
-    mapping(address => uint) public userLimited;
+    mapping(uint256 => bool) public poolIsUnique;
+    mapping(address => uint256) public userLimited;
 
-    event Created(address indexed sender, uint indexed index, Pool pool, uint startTime);
-    event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
-    event Claimed(address indexed sender, uint indexed index, uint amount0);
+    event Created(
+        address indexed sender,
+        uint256 indexed index,
+        Pool pool,
+        uint256 startTime
+    );
+    event Swapped(
+        address indexed sender,
+        uint256 indexed index,
+        uint256 amount0,
+        uint256 amount1
+    );
+    event Claimed(
+        address indexed sender,
+        uint256 indexed index,
+        uint256 amount0
+    );
 
     function initialize(address _governor) public override initializer {
-        require(msg.sender == governor || governor == address(0), "invalid governor");
+        require(
+            msg.sender == governor || governor == address(0),
+            "invalid governor"
+        );
         governor = _governor;
         feeMax = 10000;
     }
@@ -93,23 +110,31 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // address of token1
         address token1,
         // token id of token0
-        uint tokenId,
+        uint256 tokenId,
         // total amount of token1
-        uint amountTotal1,
+        uint256 amountTotal1,
         // duration time
-        uint duration
+        uint256 duration
     ) external payable {
         if (checkToken0) {
             require(token0List[token0], "invalid token0");
         }
-        uint amountTotal0 = 1;
+        uint256 amountTotal0 = 1;
         _create(
-            name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc721, now, false
+            name,
+            token0,
+            token1,
+            tokenId,
+            amountTotal0,
+            amountTotal1,
+            duration,
+            TypeErc721,
+            now,
+            false
         );
     }
 
-    function createErc721WithStartTime (
+    function createErc721WithStartTime(
         // name of the pool
         string memory name,
         // address of token0
@@ -117,23 +142,31 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // address of token1
         address token1,
         // token id of token0
-        uint tokenId,
+        uint256 tokenId,
         // total amount of token1
-        uint amountTotal1,
+        uint256 amountTotal1,
         // duration time
-        uint duration,
+        uint256 duration,
         // start time
-        uint startTime,
+        uint256 startTime,
         // is unique
         bool isUnique
     ) external payable {
         if (checkToken0) {
             require(token0List[token0], "invalid token0");
         }
-        uint amountTotal0 = 1;
+        uint256 amountTotal0 = 1;
         _create(
-            name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc721, startTime, isUnique
+            name,
+            token0,
+            token1,
+            tokenId,
+            amountTotal0,
+            amountTotal1,
+            duration,
+            TypeErc721,
+            startTime,
+            isUnique
         );
     }
 
@@ -145,20 +178,28 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // address of token1
         address token1,
         // token id of token0
-        uint tokenId,
+        uint256 tokenId,
         // total amount of token0
-        uint amountTotal0,
+        uint256 amountTotal0,
         // total amount of token1
-        uint amountTotal1,
+        uint256 amountTotal1,
         // duration time
-        uint duration
+        uint256 duration
     ) external payable {
         if (checkToken0) {
             require(token0List[token0], "invalid token0");
         }
         _create(
-            name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc1155, now, false
+            name,
+            token0,
+            token1,
+            tokenId,
+            amountTotal0,
+            amountTotal1,
+            duration,
+            TypeErc1155,
+            now,
+            false
         );
     }
 
@@ -170,15 +211,15 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // address of token1
         address token1,
         // token id of token0
-        uint tokenId,
+        uint256 tokenId,
         // total amount of token0
-        uint amountTotal0,
+        uint256 amountTotal0,
         // total amount of token1
-        uint amountTotal1,
+        uint256 amountTotal1,
         // duration time
-        uint duration,
+        uint256 duration,
         // start time
-        uint startTime,
+        uint256 startTime,
         // is unique
         bool isUnique
     ) external payable {
@@ -186,8 +227,16 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             require(token0List[token0], "invalid token0");
         }
         _create(
-            name, token0, token1, tokenId, amountTotal0, amountTotal1,
-            duration, TypeErc1155, startTime, isUnique
+            name,
+            token0,
+            token1,
+            tokenId,
+            amountTotal0,
+            amountTotal1,
+            duration,
+            TypeErc1155,
+            startTime,
+            isUnique
         );
     }
 
@@ -195,21 +244,20 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         string memory name,
         address token0,
         address token1,
-        uint tokenId,
-        uint amountTotal0,
-        uint amountTotal1,
-        uint duration,
-        uint nftType,
-        uint startTime,
+        uint256 tokenId,
+        uint256 amountTotal0,
+        uint256 amountTotal1,
+        uint256 duration,
+        uint256 nftType,
+        uint256 startTime,
         bool isUnique
-    ) private
-    {
+    ) private {
         require(startTime > 0, "start time should not be zero");
         require(amountTotal1 != 0, "the value of amountTotal1 is zero.");
         require(duration != 0, "the value of duration is zero.");
         require(bytes(name).length <= 15, "the length of name is too long");
 
-        uint closeTime = 0;
+        uint256 closeTime = 0;
         if (startTime <= now) {
             closeTime = now.add(duration);
         } else {
@@ -228,7 +276,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         pool.closeAt = closeTime;
         pool.nftType = nftType;
 
-        uint index = pools.length;
+        uint256 index = pools.length;
 
         pools.push(pool);
         startAt[index] = startTime;
@@ -241,28 +289,55 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         // transfer tokenId of token0 to this contract
         if (nftType == TypeErc721) {
             require(amountTotal0 == 1, "invalid amountTotal0");
-            IERC721(token0).safeTransferFrom(msg.sender, address(this), tokenId);
-            NFTIndexer(indexer).new721Fixswap(token0, tokenId, pools.length - 1);
+            IERC721(token0).safeTransferFrom(
+                msg.sender,
+                address(this),
+                tokenId
+            );
+            NFTIndexer(indexer).new721Fixswap(
+                token0,
+                tokenId,
+                pools.length - 1
+            );
         } else {
             require(amountTotal0 != 0, "invalid amountTotal0");
-            IERC1155(token0).safeTransferFrom(msg.sender, address(this), tokenId, amountTotal0, "");
-            NFTIndexer(indexer).new1155Fixswap(token0, pool.creator, tokenId, pools.length - 1);
+            IERC1155(token0).safeTransferFrom(
+                msg.sender,
+                address(this),
+                tokenId,
+                amountTotal0,
+                ""
+            );
+            NFTIndexer(indexer).new1155Fixswap(
+                token0,
+                pool.creator,
+                tokenId,
+                pools.length - 1
+            );
         }
 
         emit Created(msg.sender, index, pool, startTime);
     }
 
-    function swap(uint index, uint amount0) external payable
+    function swap(uint256 index, uint256 amount0)
+        external
+        payable
         isPoolExist(index)
         isPoolNotClosed(index)
         isPoolStarted(index)
         isAccountLimited(index, msg.sender)
     {
         Pool storage pool = pools[index];
-        require(amount0 >= 1 && amount0 <= pool.amountTotal0, "invalid amount0");
-        require(swappedAmount0P[index].add(amount0) <= pool.amountTotal0, "pool filled or invalid amount0");
+        require(
+            amount0 >= 1 && amount0 <= pool.amountTotal0,
+            "invalid amount0"
+        );
+        require(
+            swappedAmount0P[index].add(amount0) <= pool.amountTotal0,
+            "pool filled or invalid amount0"
+        );
 
-        uint amount1 = amount0.mul(pool.amountTotal1).div(pool.amountTotal0);
+        uint256 amount1 = amount0.mul(pool.amountTotal1).div(pool.amountTotal0);
         swappedAmount0P[index] = swappedAmount0P[index].add(amount0);
         swappedAmount1P[index] = swappedAmount1P[index].add(amount1);
         if (swappedAmount0P[index] == pool.amountTotal0) {
@@ -284,17 +359,35 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             }
             pool.creator.transfer(amount1.sub(swapFee));
         } else {
-            IERC20(pool.token1).safeTransferFrom(msg.sender, pool.creator, amount1.sub(swapFee));
+            IERC20(pool.token1).safeTransferFrom(
+                msg.sender,
+                pool.creator,
+                amount1.sub(swapFee)
+            );
             if (swapFee > 0) {
-                IERC20(pool.token1).safeTransferFrom(msg.sender, feeTo, swapFee);
+                IERC20(pool.token1).safeTransferFrom(
+                    msg.sender,
+                    feeTo,
+                    swapFee
+                );
             }
         }
 
         // transfer tokenId of token0 to sender
         if (pool.nftType == TypeErc721) {
-            IERC721(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId);
+            IERC721(pool.token0).safeTransferFrom(
+                address(this),
+                msg.sender,
+                pool.tokenId
+            );
         } else {
-            IERC1155(pool.token0).safeTransferFrom(address(this), msg.sender, pool.tokenId, amount0, "");
+            IERC1155(pool.token0).safeTransferFrom(
+                address(this),
+                msg.sender,
+                pool.tokenId,
+                amount0,
+                ""
+            );
         }
 
         if (swappedAmount0P[index] == pool.amountTotal0) {
@@ -308,9 +401,7 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         emit Swapped(msg.sender, index, amount0, amount1);
     }
 
-    function creatorClaim(uint index) external
-        isPoolExist(index)
-    {
+    function creatorClaim(uint256 index) external isPoolExist(index) {
         require(isCreator(msg.sender, index), "sender is not pool creator");
         require(!creatorClaimedP[index], "creator has claimed this pool");
         creatorClaimedP[index] = true;
@@ -320,88 +411,156 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
 
         Pool memory pool = pools[index];
         if (pool.nftType == TypeErc721) {
-            IERC721(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId);
+            IERC721(pool.token0).safeTransferFrom(
+                address(this),
+                pool.creator,
+                pool.tokenId
+            );
         } else {
-            IERC1155(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId, pool.amountTotal0.sub(swappedAmount0P[index]), "");
+            IERC1155(pool.token0).safeTransferFrom(
+                address(this),
+                pool.creator,
+                pool.tokenId,
+                pool.amountTotal0.sub(swappedAmount0P[index]),
+                ""
+            );
         }
 
         pools[index].closeAt = now;
 
-        emit Claimed(msg.sender, index, pool.amountTotal0.sub(swappedAmount0P[index]));
+        emit Claimed(
+            msg.sender,
+            index,
+            pool.amountTotal0.sub(swappedAmount0P[index])
+        );
     }
 
     function transferGovernor(address _governor) external {
-        require(msg.sender == governor || governor == address(0), "invalid governor");
+        require(
+            msg.sender == governor || governor == address(0),
+            "invalid governor"
+        );
         governor = _governor;
     }
 
-    function isCreator(address target, uint index) internal view returns (bool) {
+    function isCreator(address target, uint256 index)
+        internal
+        view
+        returns (bool)
+    {
         if (pools[index].creator == target) {
             return true;
         }
         return false;
     }
 
-    function getPoolCount() external view returns (uint) {
+    function getPoolCount() external view returns (uint256) {
         return pools.length;
     }
 
     function setFee(uint256 _fee) external governance returns (bool) {
         fee = _fee;
-        return  true;
+        return true;
     }
 
     function setFeeMax(uint256 _feeMax) external governance returns (bool) {
         feeMax = _feeMax;
-        return  true;
+        return true;
     }
 
-    function setFeeTo(address payable _feeTo) external governance returns (bool) {
+    function setFeeTo(address payable _feeTo)
+        external
+        governance
+        returns (bool)
+    {
         feeTo = _feeTo;
-        return  true;
+        return true;
     }
 
     function setIndexer(address _indexer) external governance returns (bool) {
         indexer = _indexer;
-        return  true;
+        return true;
     }
 
-    function onERC721Received(address, address, uint, bytes calldata) external override returns (bytes4) {
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes calldata
+    ) external override returns (bytes4) {
         return this.onERC721Received.selector;
     }
 
-    function onERC1155Received(address, address, uint, uint, bytes calldata) external returns(bytes4) {
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external returns (bytes4) {
         return this.onERC1155Received.selector;
     }
 
-    modifier isPoolClosed(uint index) {
+    modifier isPoolClosed(uint256 index) {
         require(pools[index].closeAt <= now, "this pool is not closed");
         _;
     }
 
-    modifier isPoolNotClosed(uint index) {
+    modifier isPoolNotClosed(uint256 index) {
         require(pools[index].closeAt > now, "this pool is closed");
         _;
     }
 
-    modifier isPoolExist(uint index) {
+    modifier isPoolExist(uint256 index) {
         require(index < pools.length, "this pool does not exist");
         _;
     }
 
-    modifier isPoolStarted(uint index) {
+    modifier isPoolStarted(uint256 index) {
         require(startAt[index] <= now, "this pool is not started yet");
         _;
     }
 
-    function getStartTime(uint index) external view returns (uint) {
+    function getStartTime(uint256 index) external view returns (uint256) {
         return startAt[index];
     }
 
-    modifier isAccountLimited(uint index, address _address) {
+    modifier isAccountLimited(uint256 index, address _address) {
         if (poolIsUnique[index] && userLimited[_address] > 0) {
-            require(now - userLimited[_address] >= 30 minutes, "this user is restricted in 30 minutes");
+            require(
+                now - userLimited[_address] >= 30 minutes,
+                "this user is restricted in 30 minutes"
+            );
         }
         _;
+    }
+
+    function transferERC20(
+        address _erc20Address,
+        address _to,
+        uint256 _amount
+    ) external governance returns (bool) {
+        try IERC20(_erc20Address).transfer(_to, _amount) {
+            return true;
+        } catch Error(string memory) {
+            return false;
+        }
+    }
+
+    function transferERC721(
+        address _erc721Address,
+        address _to,
+        uint256 _tokenId
+    ) external governance returns (bool) {
+        try
+            IERC721(_erc721Address).safeTransferFrom(
+                address(this),
+                _to,
+                _tokenId
+            ) {
+            return true;
+        } catch Error(string memory) {
+            return false;
+        }
     }
 }
