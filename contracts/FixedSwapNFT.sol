@@ -75,6 +75,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
     mapping(uint => bool) public poolIsUnique;
     mapping(address => uint) public userLimited;
 
+    // promo token list
+    mapping(address => uint256) public promoTokenList;
+
+    address public feeGovernor;
+
     event Created(address indexed sender, uint indexed index, Pool pool, uint startTime);
     event Swapped(address indexed sender, uint indexed index, uint amount0, uint amount1);
     event Claimed(address indexed sender, uint indexed index, uint amount0);
@@ -271,7 +276,15 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         }
         uint256 swapFee = 0;
         if (feeTo != address(0) && fee > 0) {
-            swapFee = amount1.mul(fee).div(feeMax);
+            if (promoTokenList[pool.token1] != 0) {
+                swapFee = amount1.mul(promoTokenList[pool.token1]).div(feeMax);
+            } else {
+                swapFee = amount1.mul(fee).div(feeMax);
+            }
+        }
+
+        if (poolIsUnique[index]) {
+            userLimited[msg.sender] = block.timestamp;
         }
 
         // transfer amount of token1 to creator
@@ -301,10 +314,6 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             pools[index].closeAt = now;
         }
 
-        if (poolIsUnique[index]) {
-            userLimited[msg.sender] = block.timestamp;
-        }
-
         emit Swapped(msg.sender, index, amount0, amount1);
     }
 
@@ -312,8 +321,12 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         isPoolExist(index)
     {
         require(isCreator(msg.sender, index), "sender is not pool creator");
+        require(!swappedP[index], "all swapped, nothing to claim");
         require(!creatorClaimedP[index], "creator has claimed this pool");
         creatorClaimedP[index] = true;
+        if (pools[index].closeAt > now) {
+            pools[index].closeAt = now;
+        }
 
         // remove ownership of this pool from creator
         delete myCreatedP[msg.sender];
@@ -324,8 +337,6 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         } else {
             IERC1155(pool.token0).safeTransferFrom(address(this), pool.creator, pool.tokenId, pool.amountTotal0.sub(swappedAmount0P[index]), "");
         }
-
-        pools[index].closeAt = now;
 
         emit Claimed(msg.sender, index, pool.amountTotal0.sub(swappedAmount0P[index]));
     }
@@ -346,12 +357,12 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         return pools.length;
     }
 
-    function setFee(uint256 _fee) external governance returns (bool) {
+    function setFee(uint256 _fee) external feeGovernance returns (bool) {
         fee = _fee;
         return  true;
     }
 
-    function setFeeMax(uint256 _feeMax) external governance returns (bool) {
+    function setFeeMax(uint256 _feeMax) external feeGovernance returns (bool) {
         feeMax = _feeMax;
         return  true;
     }
@@ -394,6 +405,11 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
         _;
     }
 
+    modifier feeGovernance() {
+        require(msg.sender == feeGovernor);
+        _;
+    }
+
     function getStartTime(uint index) external view returns (uint) {
         return startAt[index];
     }
@@ -403,5 +419,23 @@ contract FixedSwapNFT is Configurable, IERC721Receiver {
             require(now - userLimited[_address] >= 30 minutes, "this user is restricted in 30 minutes");
         }
         _;
+    }
+
+    function setPromoToken(address _promoToken, uint256 _fee) external governance returns (bool) {
+        promoTokenList[_promoToken] = _fee;
+        return true;
+    }
+
+    function getTokenRate(address _promoToken) external view returns (uint) {
+        uint rate = fee;
+        if (promoTokenList[_promoToken] != 0) {
+            rate = promoTokenList[_promoToken];
+        }
+        return rate;
+    }
+
+    function setFeeGovernor(address _feeGovernor) external governance returns (bool) {
+        feeGovernor = _feeGovernor;
+        return true;
     }
 }
