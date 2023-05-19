@@ -24,6 +24,7 @@ contract DFA721NFT is Governable, ERC721 {
     string memory baseURI
   ) ERC721(name, symbol) public {
     _setBaseURI(baseURI);
+    artist[msg.sender] = true;
     super.initialize(msg.sender);
   }
 
